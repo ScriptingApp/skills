@@ -75,8 +75,6 @@ All parameters are passed via `--queryparameters` JSON:
 | `tag` | string | for tag | Tag name for create/delete |
 | `oid` | string | for tag create | Target commit OID (default: HEAD) |
 | `lightweight` | boolean | for tag create | Create lightweight tag instead of annotated (default: false) |
-| `username` | string | for push/pull/clone | Username for authentication |
-| `password` | string | for push/pull/clone | Password or token for authentication |
 | `singleBranch` | boolean | for clone | Clone single branch only (default: true) |
 | `noCheckout` | boolean | for clone | Skip working tree checkout (default: false) |
 
@@ -175,29 +173,19 @@ scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"remot
 # Basic push
 scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"push","dir":"/path/to/project","remote":"origin","ref":"main"}' --timeout 60
 
-# Push with authentication (e.g., GitHub token)
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"push","dir":"/path/to/project","remote":"origin","ref":"main","username":"token","password":"ghp_xxxxxxxxxxxx"}' --timeout 60
-
 # Force push
 scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"push","dir":"/path/to/project","remote":"origin","ref":"main","force":true}' --timeout 60
 ```
 
 **Pull from remote:**
 ```bash
-# Basic pull
 scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"pull","dir":"/path/to/project","remote":"origin","ref":"main"}' --timeout 60
-
-# Pull with authentication
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"pull","dir":"/path/to/project","remote":"origin","ref":"main","username":"token","password":"ghp_xxxxxxxxxxxx"}' --timeout 60
 ```
 
 **Clone a repository:**
 ```bash
 # Clone public repo
 scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"clone","dir":"/path/to/project","url":"https://github.com/user/repo.git"}' --timeout 120
-
-# Clone with authentication
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"clone","dir":"/path/to/project","url":"https://github.com/user/private-repo.git","username":"token","password":"ghp_xxxxxxxxxxxx"}' --timeout 120
 
 # Clone specific branch with depth
 scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"clone","dir":"/path/to/project","url":"https://github.com/user/repo.git","ref":"main","depth":1}' --timeout 120
@@ -250,9 +238,24 @@ The script outputs JSON via `Script.exit()`:
 
 ## 3. Authentication
 
-For private repositories (push/pull/clone), use `username` and `password` parameters:
-- **GitHub**: Use a Personal Access Token as `password`, with any non-empty `username`
-- **GitLab**: Use a Personal Access Token as `password`, with `"oauth2"` as `username`
+For private repositories (push/pull/clone), authentication is handled automatically via Keychain:
+
+1. **First use**: When you execute `push`, `pull`, or `clone` for the first time, an authentication page will appear
+2. **Enter credentials**: Provide your GitHub username and Personal Access Token (PAT)
+3. **Auto-save**: Credentials are saved to iOS Keychain for future use
+4. **Subsequent uses**: Authentication is automatic — no need to re-enter credentials
+
+### Creating a GitHub PAT
+
+1. Go to [GitHub Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens)
+2. Click "Generate new token"
+3. Select `repo` scope (full control of private repositories)
+4. Copy the token and use it when the authentication page appears
+
+### Other Git Providers
+
+- **GitLab**: Use a Personal Access Token with `api` scope
+- **Bitbucket**: Use an App Password with `repository:write` permission
 - **Other**: Standard HTTP Basic Auth credentials
 
 ## 4. Architecture notes
@@ -262,11 +265,5 @@ For private repositories (push/pull/clone), use `username` and `password` parame
 - **Repo mapping**: `FileManager.appGroupDocumentsDirectory/git-repos/repo-map.json`
 - **Dependencies**: `vendor/buffer-bundle.js` (npm buffer@6) and `vendor/index.umd.min.js` (isomorphic-git v1.38.1)
 - **Polyfills**: Buffer (npm UMD bundle), TextEncoder/TextDecoder (custom)
-- **HTTP transport**: Uses `fetch` API for push/pull/clone operations
-
-## 5. Testing
-
-Run the test script to verify everything works:
-```bash
-scripting-ts run <skill_dir>/scripts/test-local-git.ts --timeout 60
-```
+- **HTTP transport**: Uses Scripting's `fetch` API with `Data.fromUint8Array()` for binary request bodies
+- **Authentication**: GitHub credentials stored in iOS Keychain (`isomorphic_git_username`, `isomorphic_git_token`)
