@@ -1,0 +1,5 @@
+{
+  "icon": "arrow.triangle.branch",
+  "color": "systemGreen",
+  "input_schema_file": "schema.json"
+}
