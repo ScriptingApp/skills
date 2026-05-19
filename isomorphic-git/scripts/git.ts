@@ -462,6 +462,8 @@ async function gitRevert(git: any, fs: any, dir: string, ref: string, author?: {
 function createHttpTransport(username?: string, password?: string) {
   return {
     async request({ url, method, headers, body }: any) {
+      console.log(`🌐 HTTP ${method || 'GET'} ${url}`)
+      
       const fetchHeaders: any = { ...headers }
       if (username && password) {
         const auth = Buffer.from(`${username}:${password}`).toString('base64')
@@ -481,9 +483,8 @@ function createHttpTransport(username?: string, password?: string) {
           allBytes.set(chunk, offset)
           offset += chunk.length
         }
-        // Convert to latin1 string for fetch compatibility
-        // (Scripting app fetch does not handle Uint8Array body properly)
-        fetchBody = Buffer.from(allBytes).toString('latin1')
+        // 使用 Data 对象作为请求体（Scripting 环境兼容）
+        fetchBody = Data.fromUint8Array(allBytes)
       }
       
       const response = await fetch(url, {
@@ -492,8 +493,28 @@ function createHttpTransport(username?: string, password?: string) {
         body: fetchBody,
       })
       
-      const responseData = await response.arrayBuffer()
-      const result = Buffer.from(new Uint8Array(responseData))
+      console.log(`  响应状态: ${response.status}`)
+      
+      // 尝试多种方式获取响应数据
+      let result: any
+      try {
+        // 使用 Scripting 的 data() 方法获取 Data 对象
+        const dataObj = await response.data()
+        if (dataObj && typeof dataObj.toUint8Array === 'function') {
+          const uint8Data = dataObj.toUint8Array()
+          result = Buffer.from(uint8Data)
+        } else {
+          result = Buffer.alloc(0)
+        }
+      } catch (e1) {
+        try {
+          // 备用方案：使用 arrayBuffer
+          const responseData = await response.arrayBuffer()
+          result = Buffer.from(new Uint8Array(responseData))
+        } catch (e2) {
+          result = Buffer.alloc(0)
+        }
+      }
       
       const responseHeaders: any = {}
       response.headers.forEach((value: string, key: string) => {
