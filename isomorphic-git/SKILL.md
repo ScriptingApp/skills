@@ -22,6 +22,7 @@ Perform Git version control operations on local project directories using [isomo
 |-----------|-------------|
 | `init` | Initialize a new git repository |
 | `add` | Stage files for commit |
+| `rm` | Remove files from staging and working tree |
 | `commit` | Create a new commit |
 | `log` | View commit history |
 | `status` | Check file status |

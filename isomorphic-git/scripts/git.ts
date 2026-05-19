@@ -275,6 +275,12 @@ async function gitAdd(git: any, fs: any, dir: string, filepath: string): Promise
   return { message: `Staged: ${filepath}` }
 }
 
+async function gitRemove(git: any, fs: any, dir: string, filepath: string): Promise<any> {
+  const gitdir = await getGitdir(dir)
+  await git.remove({ fs, dir, gitdir, filepath })
+  return { message: `Removed: ${filepath}` }
+}
+
 async function gitCommit(git: any, fs: any, dir: string, message: string, author?: { name: string; email: string }): Promise<any> {
   const gitdir = await getGitdir(dir)
   const defaultAuthor = { name: 'LLM Agent', email: 'agent@scripting.app' }
@@ -761,6 +767,11 @@ async function main() {
       case 'add':
         if (!dir || !filepath) throw new Error("Missing 'dir' or 'filepath' parameter")
         result = await gitAdd(git, createFS(await getGitdir(dir), dir), dir, filepath)
+        break
+        
+      case 'rm':
+        if (!dir || !filepath) throw new Error("Missing 'dir' or 'filepath' parameter")
+        result = await gitRemove(git, createFS(await getGitdir(dir), dir), dir, filepath)
         break
         
       case 'commit':
