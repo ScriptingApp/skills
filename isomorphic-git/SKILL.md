@@ -12,258 +12,110 @@ metadata:
 
 # Purpose
 
-Perform Git version control operations on local project directories using [isomorphic-git](https://github.com/isomorphic-git/isomorphic-git), a pure JavaScript implementation. This skill works entirely within the iOS Scripting app environment — no native git binary required.
+Run Git operations on local project directories using [isomorphic-git](https://github.com/isomorphic-git/isomorphic-git) (pure JS). No native git binary needed. `.git` lives in App Group (`<appGroup>/git-repos/<repoName>/`), keeping iCloud project folders clean.
 
-**Key feature**: `.git` directories are stored separately in the App Group shared directory, keeping them out of iCloud-synced project folders.
+# Invocation
 
-## Supported Operations
+All commands share the same shell template:
 
-| Operation | Description |
-|-----------|-------------|
-| `init` | Initialize a new git repository |
-| `add` | Stage files for commit |
-| `rm` | Remove files from staging and working tree |
-| `commit` | Create a new commit |
-| `log` | View commit history |
-| `status` | Check file status |
-| `branch` | Create/list branches |
-| `checkout` | Switch branches or restore files |
-| `diff` | View file changes |
-| `restore` | Restore working tree files |
-| `stash` | Stash changes (push/pop/apply/drop/list/clear/create) |
-| `revert` | Revert a commit |
-| `remote` | Manage remotes (add/remove/list) |
-| `push` | Push commits to remote repository |
-| `pull` | Pull changes from remote repository |
-| `clone` | Clone a remote repository |
-| `tag` | Manage tags (create/list/delete) |
-| `list` | List all local repositories |
-| `remove` | Remove repository mapping |
-
-# Instructions
-
-## 1. Run a git command
-
-Execute with `run_shell_command`:
-
-```
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"<cmd>", ...}' --timeout 30
-```
-
-### Parameters
-
-All parameters are passed via `--queryparameters` JSON:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `command` | string | ✅ | One of: `init`, `add`, `commit`, `log`, `status`, `branch`, `checkout`, `diff`, `restore`, `stash`, `revert`, `remote`, `push`, `pull`, `clone`, `tag`, `list`, `remove` |
-| `dir` | string | ✅* | Absolute path to the project directory (*not required for `list`) |
-| `name` | string | for init/branch/clone | Repository name (for init) or branch name (for branch) |
-| `filepath` | string | for add/status/checkout/diff/restore | File path relative to project dir |
-| `message` | string | for commit/stash/tag | Commit message, stash message, or tag message |
-| `author` | object | for commit/revert/pull | `{ "name": "...", "email": "..." }` |
-| `depth` | number | for log/clone | Max number of log entries, or clone depth |
-| `ref` | string | for checkout/revert/push/pull/clone | Git ref (branch, commit, tag) |
-| `checkout` | boolean | for branch | Whether to checkout after creating branch (default: true) |
-| `refA` | string | for diff | First ref for comparison |
-| `refB` | string | for diff | Second ref for comparison |
-| `op` | string | for stash/remote/tag | Operation subcommand |
-| `refIdx` | number | for stash | Stash entry index for apply/drop/pop operations (default: 0) |
-| `url` | string | for remote add/push/clone | Remote repository URL |
-| `remote` | string | for push/pull/clone/remote | Remote name (default: `origin`) |
-| `force` | boolean | for push | Force push (default: false) |
-| `tag` | string | for tag | Tag name for create/delete |
-| `oid` | string | for tag create | Target commit OID (default: HEAD) |
-| `lightweight` | boolean | for tag create | Create lightweight tag instead of annotated (default: false) |
-| `singleBranch` | boolean | for clone | Clone single branch only (default: true) |
-| `noCheckout` | boolean | for clone | Skip working tree checkout (default: false) |
-
-### Examples
-
-**Initialize a repo:**
 ```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"init","dir":"/path/to/project","name":"my-project"}' --timeout 30
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '<json>' --timeout <sec>
 ```
 
-**Stage a file:**
+`<json>` is one object with a required `command` plus per-command params. Output is always JSON via `Script.exit`:
+
+- success → `{ "ok": true, "result": <data> }`
+- error   → `{ "ok": false, "error": "<message>" }`
+
+`result` shape varies by command (oid/message/changes/branches/tags/...); read the script source if you need an exact field.
+
+# Parameters
+
+| Parameter | Type | Notes |
+|---|---|---|
+| `command` | string ✅ | `init` `add` `rm` `commit` `log` `status` `branch` `checkout` `diff` `restore` `stash` `revert` `remote` `push` `pull` `clone` `tag` `list` `remove` |
+| `dir` | string ✅* | Absolute path to the project workdir. *not required for `list`. |
+| `name` | string | Repository name (`init`) or branch name (`branch` create). |
+| `filepath` | string | File path relative to `dir`. |
+| `message` | string | Commit message, stash message, or tag message. |
+| `author` | `{name,email}` | Commit/revert/pull author. Defaults to git config `user.*`, then to `Scripting Agent`. |
+| `depth` | number | Log entries cap, or clone depth. |
+| `ref` | string | Branch/commit/tag for `checkout`/`revert`/`push`/`pull`/`clone`. |
+| `refA`, `refB` | string | Ref-to-ref `diff`. Supports `HEAD~N` / `<ref>^` syntax. |
+| `op` | string | Sub-op for `stash` (`push/pop/apply/drop/list/clear/create`), `remote` (`add/remove/list`), `tag` (`create/list/delete`). |
+| `refIdx` | number | Stash index for `apply/drop/pop` (default 0). |
+| `checkout` | boolean | `branch`: checkout after create (default true). |
+| `url` | string | Remote URL for `remote add` / `clone`. |
+| `remote` | string | Remote name (default `origin`). |
+| `force` | boolean | `push` force flag. |
+| `tag` | string | Tag name (`tag create/delete`). |
+| `oid` | string | Target commit for `tag create` (default `HEAD`). |
+| `lightweight` | boolean | Lightweight tag instead of annotated (default false). |
+| `singleBranch` | boolean | `clone` single-branch (default true). |
+| `noCheckout` | boolean | Skip working tree checkout for `clone` (default false). |
+| `auth` | `{username,password}` | Optional inline credentials for `push/pull/clone`. Bypasses Keychain and the prompt page — use for scripted / CI runs. |
+
+# Command quick-reference
+
+| Command | Required (in addition to `dir`) | Useful optional |
+|---|---|---|
+| `init` | — | `name` (repoName) |
+| `add` / `rm` | `filepath` (use `"."` to stage all) | — |
+| `commit` | `message` | `author` |
+| `log` | — | `depth` |
+| `status` | `filepath` | — |
+| `branch` | — (list) / `name` (create) | `checkout` |
+| `checkout` | `ref` | `filepath` (restore single file) |
+| `diff` | — | `filepath`, `refA`+`refB` |
+| `restore` | `filepath` | — |
+| `stash` | — | `op`, `message`, `refIdx` |
+| `revert` | `ref` | `author` |
+| `remote` | `op` | `remote`, `url` |
+| `push` / `pull` | — | `remote`, `ref`, `auth`, `force` (push) |
+| `clone` | `url` | `ref`, `depth`, `singleBranch`, `noCheckout`, `auth` |
+| `tag` | `op` | `tag`, `message`, `oid`, `lightweight` |
+| `list` / `remove` | — / `dir` | — |
+
+# Representative examples
+
 ```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"add","dir":"/path/to/project","filepath":"README.md"}' --timeout 30
+# Init + first commit
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"init","dir":"/path/proj","name":"proj"}' --timeout 30
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"add","dir":"/path/proj","filepath":"."}' --timeout 30
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"commit","dir":"/path/proj","message":"init"}' --timeout 30
+
+# Working-tree diff (recursive, all subdirectories)
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"diff","dir":"/path/proj"}' --timeout 30
+
+# Ref-to-ref diff (HEAD~N supported, filterable by filepath subtree)
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"diff","dir":"/path/proj","refA":"HEAD~1","refB":"HEAD"}' --timeout 30
+
+# Stash workflow
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"stash","dir":"/path/proj","op":"push","message":"wip"}' --timeout 30
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"stash","dir":"/path/proj","op":"pop"}' --timeout 30
+
+# Clone with inline auth (no Keychain / no prompt page)
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"clone","dir":"/path/proj","url":"https://github.com/u/r.git","auth":{"username":"x-access-token","password":"<PAT>"}}' --timeout 120
+
+# Tag + push
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"tag","dir":"/path/proj","op":"create","tag":"v1.0.0","message":"Release v1.0.0"}' --timeout 30
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"push","dir":"/path/proj","remote":"origin","ref":"main"}' --timeout 60
 ```
 
-**Commit staged changes:**
-```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"commit","dir":"/path/to/project","message":"Initial commit","author":{"name":"User","email":"user@example.com"}}' --timeout 30
-```
+# Authentication
 
-**View log:**
-```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"log","dir":"/path/to/project","depth":10}' --timeout 30
-```
+`push` / `pull` / `clone` resolve credentials in this priority:
 
-**Check status:**
-```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"status","dir":"/path/to/project","filepath":"README.md"}' --timeout 30
-```
+1. `params.auth = { username, password }` — direct, no UI
+2. iOS Keychain (`isomorphic_git_username` + `isomorphic_git_token`)
+3. Interactive prompt page (`git-auth-page.tsx`) — saves to Keychain after first success
 
-**Create a branch:**
-```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"branch","dir":"/path/to/project","name":"feature-x"}' --timeout 30
-```
+GitHub: use a Personal Access Token with `repo` scope. See README.md for provider-specific notes.
 
-**List branches:**
-```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"branch","dir":"/path/to/project"}' --timeout 30
-```
+# Gotchas
 
-**Switch branch:**
-```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"checkout","dir":"/path/to/project","ref":"feature-x"}' --timeout 30
-```
-
-**Restore a file:**
-```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"restore","dir":"/path/to/project","filepath":"README.md"}' --timeout 30
-```
-
-**View changes:**
-```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"diff","dir":"/path/to/project"}' --timeout 30
-```
-
-**Stash changes:**
-```bash
-# Push changes to stash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"stash","dir":"/path/to/project","op":"push","message":"work in progress"}' --timeout 30
-
-# List stash entries
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"stash","dir":"/path/to/project","op":"list"}' --timeout 30
-
-# Apply stash (keep in stash)
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"stash","dir":"/path/to/project","op":"apply","refIdx":0}' --timeout 30
-
-# Pop stash (apply and remove)
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"stash","dir":"/path/to/project","op":"pop"}' --timeout 30
-
-# Drop stash entry
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"stash","dir":"/path/to/project","op":"drop","refIdx":0}' --timeout 30
-
-# Clear all stash entries
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"stash","dir":"/path/to/project","op":"clear"}' --timeout 30
-```
-
-**Revert a commit:**
-```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"revert","dir":"/path/to/project","ref":"HEAD"}' --timeout 30
-```
-
-**Remote operations:**
-```bash
-# Add a remote
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"remote","dir":"/path/to/project","op":"add","remote":"origin","url":"https://github.com/user/repo.git"}' --timeout 30
-
-# List remotes
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"remote","dir":"/path/to/project","op":"list"}' --timeout 30
-
-# Remove a remote
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"remote","dir":"/path/to/project","op":"remove","remote":"origin"}' --timeout 30
-```
-
-**Push to remote:**
-```bash
-# Basic push
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"push","dir":"/path/to/project","remote":"origin","ref":"main"}' --timeout 60
-
-# Force push
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"push","dir":"/path/to/project","remote":"origin","ref":"main","force":true}' --timeout 60
-```
-
-**Pull from remote:**
-```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"pull","dir":"/path/to/project","remote":"origin","ref":"main"}' --timeout 60
-```
-
-**Clone a repository:**
-```bash
-# Clone public repo
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"clone","dir":"/path/to/project","url":"https://github.com/user/repo.git"}' --timeout 120
-
-# Clone specific branch with depth
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"clone","dir":"/path/to/project","url":"https://github.com/user/repo.git","ref":"main","depth":1}' --timeout 120
-```
-
-**Tag operations:**
-```bash
-# List tags
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"tag","dir":"/path/to/project","op":"list"}' --timeout 30
-
-# Create annotated tag
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"tag","dir":"/path/to/project","op":"create","tag":"v1.0.0","message":"Release v1.0.0"}' --timeout 30
-
-# Create lightweight tag
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"tag","dir":"/path/to/project","op":"create","tag":"v1.0.0","lightweight":true}' --timeout 30
-
-# Delete a tag
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"tag","dir":"/path/to/project","op":"delete","tag":"v1.0.0"}' --timeout 30
-```
-
-**List all repos:**
-```bash
-scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"list"}' --timeout 30
-```
-
-## 2. Interpret results
-
-The script outputs JSON via `Script.exit()`:
-
-- **Success**: `{ "ok": true, "result": <data> }` — `result` varies by command:
-  - `init`: `{ "message": "Repository initialized", "gitdir": "..." }`
-  - `add`: `{ "message": "Staged: <filepath>" }`
-  - `commit`: `{ "oid": "<40-char-hex>", "message": "Committed" }`
-  - `log`: array of `{ oid, message, author, date }`
-  - `status`: `{ "filepath": "...", "status": "..." }`
-  - `branch`: `{ "branches": [...], "current": "..." }` or `{ "message": "Branch '...' created" }`
-  - `checkout`: `{ "message": "Switched to '...'" }`
-  - `diff`: `{ "changes": [...] }`
-  - `restore`: `{ "message": "Restored '...' to HEAD" }`
-  - `stash`: `{ "op": "...", "entries": [...] }` or `{ "op": "...", "message": "..." }`
-  - `revert`: `{ "oid": "...", "message": "Reverted commit ...", "revertMessage": "..." }`
-  - `remote`: `{ "remotes": [...] }` or `{ "message": "Added/Removed remote '...'" }`
-  - `push`: `{ "message": "Pushed to origin (...)", ... }`
-  - `pull`: `{ "message": "Pulled from origin (...)" }`
-  - `clone`: `{ "message": "Cloned from ...", "gitdir": "...", "dir": "..." }`
-  - `tag`: `{ "tags": [...] }` or `{ "message": "Created/Deleted tag '...'" }`
-  - `list`: `{ "repos": [...] }`
-  - `remove`: `{ "message": "Removed repo mapping for '...'" }`
-- **Error**: `{ "ok": false, "error": "<message>" }`
-
-## 3. Authentication
-
-For private repositories (push/pull/clone), authentication is handled automatically via Keychain:
-
-1. **First use**: When you execute `push`, `pull`, or `clone` for the first time, an authentication page will appear
-2. **Enter credentials**: Provide your GitHub username and Personal Access Token (PAT)
-3. **Auto-save**: Credentials are saved to iOS Keychain for future use
-4. **Subsequent uses**: Authentication is automatic — no need to re-enter credentials
-
-### Creating a GitHub PAT
-
-1. Go to [GitHub Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens)
-2. Click "Generate new token"
-3. Select `repo` scope (full control of private repositories)
-4. Copy the token and use it when the authentication page appears
-
-### Other Git Providers
-
-- **GitLab**: Use a Personal Access Token with `api` scope
-- **Bitbucket**: Use an App Password with `repository:write` permission
-- **Other**: Standard HTTP Basic Auth credentials
-
-## 4. Architecture notes
-
-- **Gitdir location**: `FileManager.appGroupDocumentsDirectory/git-repos/<repoName>/`
-- **Workdir**: User-specified project directory
-- **Repo mapping**: `FileManager.appGroupDocumentsDirectory/git-repos/repo-map.json`
-- **Dependencies**: `vendor/buffer-bundle.js` (npm buffer@6) and `vendor/index.umd.min.js` (isomorphic-git v1.38.1)
-- **Polyfills**: Buffer (npm UMD bundle), TextEncoder/TextDecoder (custom)
-- **HTTP transport**: Uses Scripting's `fetch` API with `Data.fromUint8Array()` for binary request bodies
-- **Authentication**: GitHub credentials stored in iOS Keychain (`isomorphic_git_username`, `isomorphic_git_token`)
+- `diff` working-tree mode uses `statusMatrix` (recursive). Statuses are `*added` / `*modified` / `*deleted` / `added` / `modified` / `deleted` / `unmodified`, where the `*` prefix means "unstaged".
+- `diff` ref-to-ref mode supports `HEAD~N` and `<ref>^N` via custom resolver (isomorphic-git's `TREE({ref})` only takes concrete refs / oids).
+- `commit` resolves author in order: `params.author` → `git config user.*` → `{name:"Scripting Agent", email:"agent@scripting.fun"}`.
+- `init` only writes default `user.name` / `user.email` if not already set — won't clobber existing config.
+- `.git` is **never** in the workdir. Use `command:"list"` to inspect the project → gitdir mapping.

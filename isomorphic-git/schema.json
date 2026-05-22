@@ -4,7 +4,7 @@
   "properties": {
     "command": {
       "type": "string",
-      "enum": ["init", "add", "commit", "log", "status", "branch", "checkout", "diff", "restore", "stash", "revert", "remote", "push", "pull", "clone", "tag", "list", "remove"],
+      "enum": ["init", "add", "rm", "commit", "log", "status", "branch", "checkout", "diff", "restore", "stash", "revert", "remote", "push", "pull", "clone", "tag", "list", "remove"],
       "description": "Git command to execute"
     },
     "dir": {
@@ -90,6 +90,14 @@
     "noCheckout": {
       "type": "boolean",
       "description": "Skip working tree checkout during clone (default: false)."
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "password": { "type": "string" }
+      },
+      "description": "Optional inline credentials for push/pull/clone. When provided, bypasses Keychain lookup and the auth prompt page. Useful for CI / automated scripts."
     }
   },
   "additionalProperties": false

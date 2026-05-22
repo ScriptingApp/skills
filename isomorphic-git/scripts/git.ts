@@ -49,6 +49,8 @@ interface GitCommand {
   // clone
   singleBranch?: boolean
   noCheckout?: boolean
+  // 内联认证（可选，优先于 Keychain / 弹窗）
+  auth?: { username: string; password: string }
   // statusMatrix
   // (no extra params)
 }
@@ -56,36 +58,42 @@ interface GitCommand {
 // === 工具函数 ===
 
 // 获取项目对应的 gitdir 路径
+// 写盘策略：仅当（1）显式传入 repoName 且与现有不一致，或（2）首次为该 projectDir 建立映射时，才写 repo-map.json。
 async function getGitdir(projectDir: string, repoName?: string): Promise<string> {
   // 确保 repos 目录存在
   if (!await FileManager.exists(GIT_REPOS_DIR)) {
     await FileManager.createDirectory(GIT_REPOS_DIR, true)
   }
   
-  // 加载或创建 repo map
+  // 加载现有 repo map
   let repoMap: RepoMap = {}
   if (await FileManager.exists(REPO_MAP_FILE)) {
     try {
       const content = await FileManager.readAsString(REPO_MAP_FILE, 'utf8')
       repoMap = JSON.parse(content)
     } catch (e) {
-      console.warn("⚠️ 读取 repo-map.json 失败，将创建新文件")
+      console.warn("⚠️ 读取 repo-map.json 失败，将重建")
+      repoMap = {}
     }
   }
   
-  // 如果指定了 repoName，使用它
+  const existing = repoMap[projectDir]
+  
+  // 显式指定 repoName
   if (repoName) {
-    repoMap[projectDir] = repoName
-    await FileManager.writeAsString(REPO_MAP_FILE, JSON.stringify(repoMap, null, 2), 'utf8')
+    if (existing !== repoName) {
+      repoMap[projectDir] = repoName
+      await FileManager.writeAsString(REPO_MAP_FILE, JSON.stringify(repoMap, null, 2), 'utf8')
+    }
     return GIT_REPOS_DIR + "/" + repoName
   }
   
-  // 否则查找已存在的映射
-  if (repoMap[projectDir]) {
-    return GIT_REPOS_DIR + "/" + repoMap[projectDir]
+  // 已有映射 → short-circuit，不写盘
+  if (existing) {
+    return GIT_REPOS_DIR + "/" + existing
   }
   
-  // 使用目录名作为默认 repo name
+  // 首次建映射：用目录名生成 safeName
   const dirName = projectDir.split('/').filter(Boolean).pop() || 'unnamed'
   const safeName = dirName.replace(/[^a-zA-Z0-9_-]/g, '_')
   repoMap[projectDir] = safeName
@@ -148,20 +156,22 @@ function createFS(gitdir: string, workdir: string) {
       } catch (_e) { /* 忽略 */ }
       if (typeof data === 'string') {
         await FileManager.writeAsString(resolved, data, 'utf8')
-      } else {
-        // 确保 data 是正确的类型
-        let bytes: Uint8Array
-        if (data instanceof Uint8Array) {
-          bytes = data
-        } else if (Buffer.isBuffer(data)) {
-          bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-        } else if (data instanceof ArrayBuffer) {
-          bytes = new Uint8Array(data)
-        } else {
-          bytes = new Uint8Array(data)
-        }
-        await FileManager.writeAsBytes(resolved, bytes)
+        return
       }
+      // 规范化二进制为准确范围的 Uint8Array
+      // 顺序重要：Buffer extends Uint8Array，必须先检查 Buffer.isBuffer / ArrayBuffer
+      let bytes: Uint8Array
+      if (typeof Buffer !== 'undefined' && Buffer.isBuffer && Buffer.isBuffer(data)) {
+        bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+      } else if (data instanceof ArrayBuffer) {
+        bytes = new Uint8Array(data)
+      } else if (data instanceof Uint8Array) {
+        // 明确带 byteOffset/byteLength 以防 sub-view
+        bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+      } else {
+        bytes = new Uint8Array(data)
+      }
+      await FileManager.writeAsBytes(resolved, bytes)
     },
 
     async mkdir(filepath: string, _opts?: any): Promise<void> {
@@ -262,32 +272,70 @@ async function gitInit(git: any, fs: any, dir: string, name?: string): Promise<a
   const gitdir = await getGitdir(dir, name)
   await git.init({ fs, dir, gitdir })
   
-  // 设置默认配置
-  await git.setConfig({ fs, dir, gitdir, path: 'user.name', value: 'LLM Agent' })
-  await git.setConfig({ fs, dir, gitdir, path: 'user.email', value: 'agent@scripting.app' })
+  // 只在未设置时才写入默认 user.name / user.email，避免覆盖用户后续手动配置
+  const existingName = await git.getConfig({ fs, dir, gitdir, path: 'user.name' }).catch(() => undefined)
+  const existingEmail = await git.getConfig({ fs, dir, gitdir, path: 'user.email' }).catch(() => undefined)
+  if (!existingName) {
+    await git.setConfig({ fs, dir, gitdir, path: 'user.name', value: 'Scripting Agent' })
+  }
+  if (!existingEmail) {
+    await git.setConfig({ fs, dir, gitdir, path: 'user.email', value: 'agent@scripting.fun' })
+  }
   
   return { message: "Repository initialized", gitdir }
 }
 
 async function gitAdd(git: any, fs: any, dir: string, filepath: string): Promise<any> {
   const gitdir = await getGitdir(dir)
+  
+  // 检查文件是否存在于工作目录
+  const fullPath = dir + '/' + filepath
+  const exists = await fs.exists(fullPath)
+  
+  if (!exists && filepath !== '.') {
+    // 文件不存在，使用 remove 来暂存删除操作
+    try {
+      await git.remove({ fs, dir, gitdir, filepath })
+      return { message: `Staged deletion: ${filepath}` }
+    } catch (e) {
+      // 如果 remove 失败，尝试使用 add
+      await git.add({ fs, dir, gitdir, filepath })
+      return { message: `Staged: ${filepath}` }
+    }
+  }
+  
   await git.add({ fs, dir, gitdir, filepath })
   return { message: `Staged: ${filepath}` }
 }
 
 async function gitRemove(git: any, fs: any, dir: string, filepath: string): Promise<any> {
   const gitdir = await getGitdir(dir)
-  await git.remove({ fs, dir, gitdir, filepath })
-  return { message: `Removed: ${filepath}` }
+  
+  try {
+    const result = await git.remove({ fs, dir, gitdir, filepath })
+    return { message: `Removed: ${filepath}`, result }
+  } catch (error: any) {
+    throw error
+  }
 }
 
 async function gitCommit(git: any, fs: any, dir: string, message: string, author?: { name: string; email: string }): Promise<any> {
   const gitdir = await getGitdir(dir)
-  const defaultAuthor = { name: 'LLM Agent', email: 'agent@scripting.app' }
+  // 优先级：params.author > git config > 内置默认
+  let resolvedAuthor = author
+  if (!resolvedAuthor) {
+    const cfgName = await git.getConfig({ fs, dir, gitdir, path: 'user.name' }).catch(() => undefined)
+    const cfgEmail = await git.getConfig({ fs, dir, gitdir, path: 'user.email' }).catch(() => undefined)
+    if (cfgName && cfgEmail) {
+      resolvedAuthor = { name: cfgName, email: cfgEmail }
+    } else {
+      resolvedAuthor = { name: 'Scripting Agent', email: 'agent@scripting.fun' }
+    }
+  }
   const oid = await git.commit({
     fs, dir, gitdir,
     message,
-    author: author || defaultAuthor,
+    author: resolvedAuthor,
   })
   return { oid, message: "Committed" }
 }
@@ -338,41 +386,105 @@ async function gitCheckout(git: any, fs: any, dir: string, ref: string, filepath
   }
 }
 
+// statusMatrix [head, workdir, stage] 元组 → 语义化状态名
+// 对齐 git.status 字符串返回（'modified'/'*modified'/'added'/'deleted' 等）
+function matrixToStatus(head: number, work: number, stage: number): string {
+  const key = `${head}${work}${stage}`
+  switch (key) {
+    case '003': return '*added'           // new, staged then deleted from workdir
+    case '020': return '*added'           // new, untracked
+    case '022': return 'added'            // new, staged
+    case '023': return '*added'           // new, staged then modified
+    case '100': return 'deleted'          // deleted, staged
+    case '101': return '*deleted'         // deleted, unstaged
+    case '111': return 'unmodified'
+    case '110': return '*undeletemodified'
+    case '112': return '*modified'
+    case '113': return '*modified'
+    case '120': return '*undeleted'
+    case '121': return '*modified'        // modified, unstaged
+    case '122': return 'modified'         // modified, staged
+    case '123': return '*modified'        // modified, staged then modified again
+    default:    return `unknown(${key})`
+  }
+}
+
+// 解析“类 ref”：支持 <ref>~N / <ref>^ 简写，输出具体 commit oid。
+// isomorphic-git 本身不该析这些语法，手工走 readCommit 递归拿 parent。
+async function resolveReflike(git: any, fs: any, dir: string, gitdir: string, ref: string): Promise<string> {
+  // 解析 ~N / ^（只支持第一个 parent）
+  const m = ref.match(/^(.+?)([~^])(\d*)$/)
+  if (!m) {
+    return await git.resolveRef({ fs, dir, gitdir, ref })
+  }
+  const [, base, op, nStr] = m
+  const n = op === '~' ? (nStr ? parseInt(nStr, 10) : 1) : (nStr ? parseInt(nStr, 10) : 1)
+  let oid = await resolveReflike(git, fs, dir, gitdir, base)
+  for (let i = 0; i < n; i++) {
+    const c = await git.readCommit({ fs, dir, gitdir, oid })
+    if (!c.commit.parent || c.commit.parent.length === 0) {
+      throw new Error(`ref '${ref}' goes beyond initial commit`)
+    }
+    oid = c.commit.parent[0]
+  }
+  return oid
+}
+
 async function gitDiff(git: any, fs: any, dir: string, filepath?: string, refA?: string, refB?: string): Promise<any> {
   const gitdir = await getGitdir(dir)
   
-  // 获取工作区状态
-  const status = filepath ? [await git.status({ fs, dir, gitdir, filepath })] : []
-  
-  // 如果指定了两个 ref，比较它们
+  // refA && refB 间的真 diff：递归遍历两该 tree，对比每个路径的 blob OID
   if (refA && refB) {
-    // TODO: 实现 ref 间的 diff
-    return { message: "Ref comparison not yet implemented", refA, refB }
+    const TREE = git.TREE
+    // 先把“类 ref”（HEAD~1 / branch^ 等）解析为具体 oid，避免 TREE 静默不识别
+    const oidA = await resolveReflike(git, fs, dir, gitdir, refA)
+    const oidB = await resolveReflike(git, fs, dir, gitdir, refB)
+    const changes: Array<{ filepath: string; status: string; oidA?: string; oidB?: string }> = []
+    await git.walk({
+      fs, dir, gitdir,
+      trees: [TREE({ ref: oidA }), TREE({ ref: oidB })],
+      map: async (fp: string, entries: any[]) => {
+        if (fp === '.') return
+        if (filepath && fp !== filepath && !fp.startsWith(filepath + '/')) return
+        const [a, b] = entries
+        const [aType, bType] = await Promise.all([
+          a ? a.type() : Promise.resolve(undefined),
+          b ? b.type() : Promise.resolve(undefined),
+        ])
+        // 只对 blob 节点输出 changes（目录由 walk 自动递归）
+        if (aType !== 'blob' && bType !== 'blob') return
+        const [aOid, bOid] = await Promise.all([
+          a && aType === 'blob' ? a.oid() : Promise.resolve(undefined),
+          b && bType === 'blob' ? b.oid() : Promise.resolve(undefined),
+        ])
+        let status: string
+        if (aOid && !bOid) status = 'removed'
+        else if (!aOid && bOid) status = 'added'
+        else if (aOid && bOid && aOid !== bOid) status = 'modified'
+        else return // unchanged
+        changes.push({ filepath: fp, status, oidA: aOid, oidB: bOid })
+      },
+    })
+    return { refA, refB, changes }
   }
   
-  // 否则返回工作区状态
+  // 单文件状态
   if (filepath) {
     const fileStatus = await git.status({ fs, dir, gitdir, filepath })
     return { filepath, status: fileStatus }
   }
   
-  // 返回所有变更文件
-  const workdir = dir
-  const files = await FileManager.readDirectory(workdir)
+  // 工作区全量变更（递归所有子目录，由 isomorphic-git 内部走 tree+index+workdir 三方对比）
+  const matrix: any[][] = await git.statusMatrix({ fs, dir, gitdir })
   const changes: Array<{ filepath: string; status: string }> = []
-  
-  for (const file of files) {
-    if (file === '.git') continue
-    try {
-      const fileStatus = await git.status({ fs, dir: workdir, gitdir, filepath: file })
-      if (fileStatus !== 'unmodified') {
-        changes.push({ filepath: file, status: fileStatus })
-      }
-    } catch (e) {
-      // 忽略错误
-    }
+  for (const row of matrix) {
+    const fp = row[0] as string
+    const head = row[1] as number
+    const work = row[2] as number
+    const stage = row[3] as number
+    if (head === 1 && work === 1 && stage === 1) continue // unmodified
+    changes.push({ filepath: fp, status: matrixToStatus(head, work, stage) })
   }
-  
   return { changes }
 }
 
@@ -422,7 +534,7 @@ async function gitStash(git: any, fs: any, dir: string, op?: string, message?: s
 
 async function gitRevert(git: any, fs: any, dir: string, ref: string, author?: { name: string; email: string }): Promise<any> {
   const gitdir = await getGitdir(dir)
-  const defaultAuthor = { name: 'LLM Agent', email: 'agent@scripting.app' }
+  const defaultAuthor = { name: 'Scripting Agent', email: 'agent@scripting.fun' }
   
   // 获取要 revert 的提交
   const commits = await git.log({ fs, dir, gitdir, depth: 2 })
@@ -508,7 +620,12 @@ function createHttpTransport(username?: string, password?: string) {
         const dataObj = await response.data()
         if (dataObj && typeof dataObj.toUint8Array === 'function') {
           const uint8Data = dataObj.toUint8Array()
-          result = Buffer.from(uint8Data)
+          // 关键修复：toUint8Array() 可能返回基于只读 ArrayBuffer 的视图
+          // 必须复制到新的可写 ArrayBuffer，否则 isomorphic-git 的 StreamReader
+          // 在 buffer.slice() 时会得到只读视图，导致 "Attempted to assign to readonly property"
+          const mutableCopy = new Uint8Array(uint8Data.length)
+          mutableCopy.set(uint8Data)
+          result = Buffer.from(mutableCopy)
         } else {
           result = Buffer.alloc(0)
         }
@@ -516,7 +633,9 @@ function createHttpTransport(username?: string, password?: string) {
         try {
           // 备用方案：使用 arrayBuffer
           const responseData = await response.arrayBuffer()
-          result = Buffer.from(new Uint8Array(responseData))
+          // 同样需要复制以确保可写
+          const mutableCopy = new Uint8Array(responseData)
+          result = Buffer.from(mutableCopy)
         } catch (e2) {
           result = Buffer.alloc(0)
         }
@@ -586,7 +705,7 @@ async function gitPush(git: any, fs: any, dir: string, remote?: string, ref?: st
 async function gitPull(git: any, fs: any, dir: string, remote?: string, ref?: string, author?: { name: string; email: string }, username?: string, password?: string): Promise<any> {
   const gitdir = await getGitdir(dir)
   const http = createHttpTransport(username, password)
-  const defaultAuthor = { name: 'LLM Agent', email: 'agent@scripting.app' }
+  const defaultAuthor = { name: 'Scripting Agent', email: 'agent@scripting.fun' }
   
   await git.pull({
     fs, dir, gitdir,
@@ -643,7 +762,7 @@ async function gitTag(git: any, fs: any, dir: string, op: string, tag?: string, 
           ref: tag,
           object: oid || 'HEAD',
           message: message || `Tag ${tag}`,
-          tagger: { name: 'LLM Agent', email: 'agent@scripting.app', timestamp: Math.floor(Date.now() / 1000), timezoneOffset: 0 },
+          tagger: { name: 'Scripting Agent', email: 'agent@scripting.fun', timestamp: Math.floor(Date.now() / 1000), timezoneOffset: 0 },
         })
         return { message: `Created annotated tag '${tag}'` }
       }
@@ -678,19 +797,24 @@ async function getStoredAuth(): Promise<{ username: string; token: string } | nu
 
 /**
  * 确保有认证信息
- * 1. 如果 params 已有 username/password，直接使用
+ * 1. 如果 inlineAuth 传入，直接使用（优先级最高，CI / 脚本场景）
  * 2. 检查 Keychain 是否已存储
  * 3. 都没有则弹出配置页面
  * 4. 用户关闭页面返回 null → 调用方应抛出错误
  */
-async function ensureAuth(): Promise<{ username: string; password: string } | null> {
-  // 检查 Keychain
+async function ensureAuth(inlineAuth?: { username: string; password: string }): Promise<{ username: string; password: string } | null> {
+  // 1. 内联凭据优先
+  if (inlineAuth && inlineAuth.password) {
+    return { username: inlineAuth.username || 'token', password: inlineAuth.password }
+  }
+
+  // 2. 检查 Keychain
   const stored = await getStoredAuth()
   if (stored) {
     return { username: stored.username, password: stored.token }
   }
 
-  // 弹出认证配置页面（从 git-auth-page.tsx 导入）
+  // 3. 弹出认证配置页面（从 git-auth-page.tsx 导入）
   const result = await promptForAuth()
   if (!result) {
     return null
@@ -716,7 +840,7 @@ async function gitList(): Promise<any> {
   return { repos }
 }
 
-async function gitRemove(dir: string): Promise<any> {
+async function gitRemoveRepo(dir: string): Promise<any> {
   if (!await FileManager.exists(REPO_MAP_FILE)) {
     return { message: "No repos found" }
   }
@@ -742,7 +866,7 @@ async function gitRemove(dir: string): Promise<any> {
 
 async function main() {
   const params = Script.queryParameters as unknown as GitCommand
-  const { command, dir, name, filepath, message, author, depth, ref, checkout, refA, refB, op, refIdx, url, remote, force, tag, oid, lightweight, singleBranch, noCheckout } = params
+  const { command, dir, name, filepath, message, author, depth, ref, checkout, refA, refB, op, refIdx, url, remote, force, tag, oid, lightweight, singleBranch, noCheckout, auth } = params
   
   if (!command) {
     Script.exit({ ok: false, error: "Missing 'command' parameter" })
@@ -815,7 +939,7 @@ async function main() {
         
       case 'remove':
         if (!dir) throw new Error("Missing 'dir' parameter")
-        result = await gitRemove(dir)
+        result = await gitRemoveRepo(dir)
         break
         
       case 'stash':
@@ -835,7 +959,7 @@ async function main() {
         
       case 'push': {
         if (!dir) throw new Error("Missing 'dir' parameter")
-        const pushAuth = await ensureAuth()
+        const pushAuth = await ensureAuth(auth)
         if (!pushAuth) throw new Error(AUTH_CANCELLED_ERROR)
         result = await gitPush(git, createFS(await getGitdir(dir), dir), dir, remote, ref, force, pushAuth.username, pushAuth.password)
         break
@@ -843,7 +967,7 @@ async function main() {
         
       case 'pull': {
         if (!dir) throw new Error("Missing 'dir' parameter")
-        const pullAuth = await ensureAuth()
+        const pullAuth = await ensureAuth(auth)
         if (!pullAuth) throw new Error(AUTH_CANCELLED_ERROR)
         result = await gitPull(git, createFS(await getGitdir(dir), dir), dir, remote, ref, author, pullAuth.username, pullAuth.password)
         break
@@ -851,7 +975,7 @@ async function main() {
         
       case 'clone': {
         if (!dir || !url) throw new Error("Missing 'dir' or 'url' parameter")
-        const cloneAuth = await ensureAuth()
+        const cloneAuth = await ensureAuth(auth)
         if (!cloneAuth) throw new Error(AUTH_CANCELLED_ERROR)
         result = await gitClone(git, createFS(await getGitdir(dir, name), dir), dir, url, remote, ref, depth, singleBranch, noCheckout, cloneAuth.username, cloneAuth.password)
         break

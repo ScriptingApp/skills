@@ -4,7 +4,7 @@
  * 保存到 Keychain 后返回凭据
  */
 
-import { Navigation, NavigationStack, List, Section, TextField, SecureField, Button, Text } from "scripting"
+import { Navigation, NavigationStack, List, Section, TextField, SecureField, Button, Text, useObservable } from "scripting"
 
 const KC_USERNAME_KEY = "isomorphic_git_username"
 const KC_TOKEN_KEY = "isomorphic_git_token"
@@ -27,8 +27,9 @@ const i18n = {
 
 function GitAuthPage() {
   const dismiss = Navigation.useDismiss()
-  const usernameObs = new Observable("")
-  const tokenObs = new Observable("")
+  // 从 Keychain 读取已存值作为默认值（编辑而非重输）
+  const usernameObs = useObservable(() => Keychain.get(KC_USERNAME_KEY) ?? "")
+  const tokenObs = useObservable(() => Keychain.get(KC_TOKEN_KEY) ?? "")
 
   const handleSave = () => {
     const u = usernameObs.value.trim() || "x-access-token"
