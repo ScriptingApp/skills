@@ -17,19 +17,15 @@ Each skill can be imported into the Scripting app using one of these methods:
 
 Use the `scripting://` URL scheme to import directly:
 
-```
-scripting://import_skills?urls=%5B%22https:%5C/%5C/github.com%5C/ScriptingApp%5C/skills%5C/tree%5C/main%5C/isomorphic-git%22%5D
-scripting://import_skills?urls=%5B%22https:%5C/%5C/github.com%5C/ScriptingApp%5C/skills%5C/tree%5C/main%5C/ssh-manager%22%5D
-```
+- [Import isomorphic-git](scripting://import_skills?urls=%5B%22https:%5C/%5C/github.com%5C/ScriptingApp%5C/skills%5C/tree%5C/main%5C/isomorphic-git%22%5D)
+- [Import ssh-manager](scripting://import_skills?urls=%5B%22https:%5C/%5C/github.com%5C/ScriptingApp%5C/skills%5C/tree%5C/main%5C/ssh-manager%22%5D)
 
 ### Method 2: Web Link
 
 Use the `scripting.fun` service link (shareable with other users):
 
-```
-https://scripting.fun/import_skills?urls=%5B%22https:%5C/%5C/github.com%5C/ScriptingApp%5C/skills%5C/tree%5C/main%5C/isomorphic-git%22%5D
-https://scripting.fun/import_skills?urls=%5B%22https:%5C/%5C/github.com%5C/ScriptingApp%5C/skills%5C/tree%5C/main%5C/ssh-manager%22%5D
-```
+- [Import isomorphic-git](https://scripting.fun/import_skills?urls=%5B%22https:%5C/%5C/github.com%5C/ScriptingApp%5C/skills%5C/tree%5C/main%5C/isomorphic-git%22%5D)
+- [Import ssh-manager](https://scripting.fun/import_skills?urls=%5B%22https:%5C/%5C/github.com%5C/ScriptingApp%5C/skills%5C/tree%5C/main%5C/ssh-manager%22%5D)
 
 ### Generate Import Links
 
