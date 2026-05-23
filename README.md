@@ -7,6 +7,7 @@ A collection of skills designed for the **Scripting app** AI agent. These skills
 | Skill | Description |
 |-------|-------------|
 | [isomorphic-git](./isomorphic-git) | Git version control — init, add, commit, push, pull, clone, and more. Works entirely within iOS using a pure JavaScript implementation. |
+| [ssh-manager](./ssh-manager) | SSH server management — connect, execute commands, transfer files via SFTP, manage multiple servers with password or SSH key authentication, and interactive sudo support. |
 
 ## Importing Skills
 
@@ -18,6 +19,7 @@ Use the `scripting://` URL scheme to import directly:
 
 ```
 scripting://import_skills?urls=%5B%22https:%5C/%5C/github.com%5C/ScriptingApp%5C/skills%5C/tree%5C/main%5C/isomorphic-git%22%5D
+scripting://import_skills?urls=%5B%22https:%5C/%5C/github.com%5C/ScriptingApp%5C/skills%5C/tree%5C/main%5C/ssh-manager%22%5D
 ```
 
 ### Method 2: Web Link
@@ -26,6 +28,7 @@ Use the `scripting.fun` service link (shareable with other users):
 
 ```
 https://scripting.fun/import_skills?urls=%5B%22https:%5C/%5C/github.com%5C/ScriptingApp%5C/skills%5C/tree%5C/main%5C/isomorphic-git%22%5D
+https://scripting.fun/import_skills?urls=%5B%22https:%5C/%5C/github.com%5C/ScriptingApp%5C/skills%5C/tree%5C/main%5C/ssh-manager%22%5D
 ```
 
 ### Generate Import Links
