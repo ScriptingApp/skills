@@ -123,6 +123,7 @@ This returns steps to:
 | `upload` | Upload file | `name`, `local_path`, `remote_path` |
 | `download` | Download file | `name`, `remote_path`, `local_path` |
 | `generate-key` | Generate SSH key pair | `key_name` (optional, default: id_ed25519) |
+| `get-key` | Read or create SSH key | `key_name` (optional, default: id_ed25519) |
 | `show-key` | Show public key | `key_name` (optional) |
 | `deploy-key` | Deploy key via password | `name` (required), `key_name` (optional) |
 

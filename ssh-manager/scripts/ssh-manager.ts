@@ -48,6 +48,7 @@ async function main() {
       case "upload":      await handleUpload(); break
       case "download":    await handleDownload(); break
       case "generate-key": await handleGenerateKey(); break
+      case "get-key":       await handleGetKey(); break
       case "deploy-key":  await handleDeployKey(); break
       case "show-key":    handleShowKey(); break
       default:
@@ -57,7 +58,7 @@ async function main() {
           available_actions: [
             "config", "list", "remove", "status", "connect",
             "execute", "execute-sudo", "upload", "download",
-            "generate-key", "deploy-key", "show-key"
+            "generate-key", "get-key", "deploy-key", "show-key"
           ]
         })
     }
@@ -345,7 +346,7 @@ async function handleDownload() {
 }
 
 async function handleGenerateKey() {
-  const keyName = params.key_name || "id_ed25519"
+  const keyName = (params.key_name as string) || "id_ed25519"
   const sshDir = `${FileManager.documentsDirectory}/.ssh`
   const keyPath = `${sshDir}/${keyName}`
   const pubKeyPath = `${keyPath}.pub`
@@ -355,6 +356,7 @@ async function handleGenerateKey() {
       await FileManager.createDirectory(sshDir, true)
     }
 
+    // 密钥已存在，直接读取公钥
     if (await FileManager.exists(keyPath)) {
       const pubKey = await FileManager.readAsString(pubKeyPath)
       Script.exit({
@@ -367,19 +369,71 @@ async function handleGenerateKey() {
       return
     }
 
+    // 密钥不存在，用 run_shell_command 生成
+    // ssh-keygen 不产生二进制输出，可以安全通过 SSHClient 解码
     Script.exit({
       success: true,
       action: "generate-key",
-      message: "请运行以下命令生成密钥",
+      message: "密钥不存在，需要生成",
       commands: [
         `mkdir -p ${sshDir}`,
         `ssh-keygen -t ed25519 -f ${keyPath} -N "" -q`,
         `cat ${pubKeyPath}`
       ],
-      note: "生成后请复制公钥内容到服务器的 ~/.ssh/authorized_keys 文件中"
+      note: "请依次执行以上命令，然后将公钥内容添加到服务器 ~/.ssh/authorized_keys"
     })
   } catch (error) {
     Script.exit({ success: false, action: "generate-key", error: String(error) })
+  }
+}
+
+async function handleGetKey() {
+  const keyName = (params.key_name as string) || "id_ed25519"
+  const sshDir = `${FileManager.documentsDirectory}/.ssh`
+  const keyPath = `${sshDir}/${keyName}`
+  const pubKeyPath = `${keyPath}.pub`
+
+  try {
+    if (!(await FileManager.exists(sshDir))) {
+      await FileManager.createDirectory(sshDir, true)
+    }
+
+    let created = false
+
+    // 密钥不存在，自动创建
+    if (!(await FileManager.exists(keyPath))) {
+      try {
+        const result = await Shell.run(`ssh-keygen -t ed25519 -f "${keyPath}" -N "" -q`)
+        if (result.exitCode !== 0) {
+          Script.exit({ success: false, action: "get-key", error: `密钥生成失败: ${result.output}` })
+          return
+        }
+        created = true
+      } catch (e) {
+        Script.exit({ success: false, action: "get-key", error: `密钥生成失败: ${e}` })
+        return
+      }
+    }
+
+    // 读取公钥
+    if (!(await FileManager.exists(pubKeyPath))) {
+      Script.exit({ success: false, action: "get-key", error: `公钥文件不存在: ${pubKeyPath}` })
+      return
+    }
+
+    const pubKey = (await FileManager.readAsString(pubKeyPath)).trim()
+
+    Script.exit({
+      success: true,
+      action: "get-key",
+      created,
+      publicKey: pubKey,
+      note: created
+        ? "密钥已生成。请将以下公钥添加到服务器的 ~/.ssh/authorized_keys 文件中"
+        : "密钥已存在。如需添加到服务器，请将以下公钥添加到 ~/.ssh/authorized_keys"
+    })
+  } catch (error) {
+    Script.exit({ success: false, action: "get-key", error: String(error) })
   }
 }
 
