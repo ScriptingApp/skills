@@ -296,9 +296,8 @@ async function handleUpload() {
 
   let ssh: SSHClient | null = null
   try {
-    const content = await FileManager.readAsString(localPath)
-    const data = Data.fromString(content)
-    if (!data) { Script.exit({ success: false, error: "无法将文件内容转换为Data" }); return }
+    const data = await FileManager.readAsData(localPath)
+    if (!data) { Script.exit({ success: false, error: "无法读取文件内容" }); return }
 
     ssh = await connectSSH(config)
     const sftp = await ssh.openSFTP()
