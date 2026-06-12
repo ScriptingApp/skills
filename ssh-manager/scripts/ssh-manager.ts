@@ -333,10 +333,9 @@ async function handleDownload() {
     await file.close()
     await sftp.close()
 
-    const content = data.toDecodedString()
-    await FileManager.writeAsString(localPath, content)
+    await FileManager.writeAsData(localPath, data)
 
-    Script.exit({ success: true, action: "download", server: name, remote_path: remotePath, local_path: localPath, message: "文件下载成功" })
+    Script.exit({ success: true, action: "download", server: name, remote_path: remotePath, local_path: localPath, size: data.size, message: "文件下载成功" })
   } catch (error) {
     Script.exit({ success: false, action: "download", server: name, error: String(error) })
   } finally {
