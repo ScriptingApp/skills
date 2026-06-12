@@ -38,9 +38,15 @@ isomorphic-git/
 ├── schema.json           ← input validation for queryparameters
 ├── spec.md               ← internal design notes
 ├── scripts/
-│   ├── git.ts            ← skill entry
-│   ├── fs-adapter.ts      ← shared Scripting FileManager adapter for isomorphic-git
-│   ├── diff-utils.ts      ← guarded working-tree diff helpers
+│   ├── git.ts            ← thin skill entry / command dispatcher
+│   ├── types.ts          ← shared command/auth/author types
+│   ├── repo-map.ts       ← external gitdir repo-map helpers
+│   ├── git-loader.ts     ← isomorphic-git UMD bundle loader
+│   ├── commands.ts       ← local git commands (init/add/commit/log/status/diff/etc.)
+│   ├── remote-commands.ts← HTTP transport and remote/push/pull/clone commands
+│   ├── auth.ts           ← Keychain + auth page credential resolution
+│   ├── fs-adapter.ts     ← shared Scripting FileManager adapter for isomorphic-git
+│   ├── diff-utils.ts     ← guarded working-tree diff helpers
 │   ├── git-auth-page.tsx ← Keychain auth prompt UI (used for push/pull/clone)
 │   ├── polyfills.ts      ← Buffer/TextEncoder polyfills
 │   └── __tests__/        ← test scripts (not loaded at runtime)
@@ -49,6 +55,7 @@ isomorphic-git/
 │       ├── test-diff-guard.ts
 │       ├── test-ignore-cache.ts
 │       ├── test-path-collisions.ts
+│       ├── test-module-split.ts
 │       ├── test-auth-page.tsx
 │       └── _probe_walk.ts
 └── vendor/               ← UMD bundles
@@ -121,10 +128,14 @@ scripting-ts run <skill_dir>/scripts/__tests__/test-ignore-cache.ts --timeout 60
 
 # Workdir paths that look like git internals (config/HEAD/refs/*) still commit from workdir
 scripting-ts run <skill_dir>/scripts/__tests__/test-path-collisions.ts --timeout 90
+
+# Module split regression
+scripting-ts run <skill_dir>/scripts/__tests__/test-module-split.ts --timeout 60
 ```
 
 ## Implementation notes
 
+- **Thin entry / split modules**: `scripts/git.ts` is intentionally a small command dispatcher. Repo mapping lives in `repo-map.ts`, UMD loading in `git-loader.ts`, local commands in `commands.ts`, remote transport/commands in `remote-commands.ts`, and auth in `auth.ts`. `test-module-split.ts` guards this boundary.
 - **`diff` working-tree mode** uses `git.statusMatrix` for recursive 3-way comparison (HEAD × index × workdir). It is guarded by `maxFiles` (non-negative integer, default `5000`, use `0` to disable) and supports `summaryOnly:true` to return counts without the full change list. With `filepath` set to a directory, it runs a guarded subtree diff; with `filepath` set to a file, it uses lightweight single-file `git.status`.
 - **Shared FS adapter**: `scripts/fs-adapter.ts` is the single production FileManager adapter used by `git.ts` and regression tests; tests add instrumentation via adapter hooks instead of copying FS logic. It caches UTF-8 reads of `.gitignore` and `.git/info/exclude` within one adapter lifecycle and invalidates that cache on writes/removes/renames.
 - **Stage/add performance P0**: the FS adapter returns stable POSIX-like stat fields (`dev/ino/uid/gid/...`) so isomorphic-git's index stat cache can skip unchanged files; command-level `add` passes `parallel:false` to avoid unbounded FileManager concurrency on iOS.

@@ -15,7 +15,7 @@ import { createFS } from "../fs-adapter"
 declare const Buffer: any
 
 const SKILL_DIR = FileManager.scriptsDirectory + "/../scripting-skills/isomorphic-git"
-const GIT_TS_PATH = SKILL_DIR + "/scripts/git.ts"
+const COMMANDS_TS_PATH = SKILL_DIR + "/scripts/commands.ts"
 const GIT_REPOS_DIR = FileManager.appGroupDocumentsDirectory + "/git-repos"
 const TEST_PROJECT_DIR = FileManager.appGroupDocumentsDirectory + "/test-git-stage-performance"
 const TEST_REPO_NAME = "test-stage-performance"
@@ -96,14 +96,15 @@ async function runTests() {
     await loadBufferPolyfill()
 
     console.log("=== Static regression: production adapter + git.ts P0 patch ===")
-    const gitTs = await FileManager.readAsString(GIT_TS_PATH, 'utf8')
+    const gitTs = await FileManager.readAsString(SKILL_DIR + "/scripts/git.ts", 'utf8')
+    const commandsTs = await FileManager.readAsString(COMMANDS_TS_PATH, 'utf8')
     const adapterTs = await FileManager.readAsString(SKILL_DIR + "/scripts/fs-adapter.ts", 'utf8')
     assert(gitTs.includes('import { createFS } from "./fs-adapter"'), "git.ts 使用共享 fs-adapter")
     assert(!gitTs.includes("function createFS(gitdir"), "git.ts 不再内联 createFS")
     assert(adapterTs.includes("dev: 0"), "fs-adapter stat 返回 dev")
     assert(adapterTs.includes("uid: 0"), "fs-adapter stat 返回 uid")
     assert(adapterTs.includes("gid: 0"), "fs-adapter stat 返回 gid")
-    assert(/await\s+git\.add\(\{[^}]*fs,\s*dir,\s*gitdir,\s*filepath,\s*parallel:\s*false[^}]*\}\)/s.test(gitTs), "git.ts 主 add 路径调用 git.add(... parallel:false)")
+    assert(/await\s+git\.add\(\{[^}]*fs,\s*dir,\s*gitdir,\s*filepath,\s*parallel:\s*false[^}]*\}\)/s.test(commandsTs), "commands.ts 主 add 路径调用 git.add(... parallel:false)")
 
     console.log("\n=== Functional regression: stat cache avoids full workdir reread ===")
     await resetTestDirs()
