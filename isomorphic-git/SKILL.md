@@ -54,6 +54,8 @@ scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '<json>' --timeout
 | `singleBranch` | boolean | `clone` single-branch (default true). |
 | `noCheckout` | boolean | Skip working tree checkout for `clone` (default false). |
 | `auth` | `{username,password}` | Optional inline credentials for `push/pull/clone`. Bypasses Keychain and the prompt page — use for scripted / CI runs. |
+| `maxFiles` | integer | Working-tree `diff` guard. Non-negative integer. Default `5000`; use `0` to disable. Applies to full working-tree diff and directory `filepath` subtree diff. |
+| `summaryOnly` | boolean | Working-tree `diff`: return status counts without the full `changes` list. |
 
 # Command quick-reference
 
@@ -66,7 +68,7 @@ scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '<json>' --timeout
 | `status` | `filepath` | — |
 | `branch` | — (list) / `name` (create) | `checkout` |
 | `checkout` | `ref` | `filepath` (restore single file) |
-| `diff` | — | `filepath`, `refA`+`refB` |
+| `diff` | — | `filepath`, `refA`+`refB`, `maxFiles`, `summaryOnly` |
 | `restore` | `filepath` | — |
 | `stash` | — | `op`, `message`, `refIdx` |
 | `revert` | `ref` | `author` |
@@ -84,8 +86,14 @@ scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"init"
 scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"add","dir":"/path/proj","filepath":"."}' --timeout 30
 scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"commit","dir":"/path/proj","message":"init"}' --timeout 30
 
-# Working-tree diff (recursive, all subdirectories)
+# Working-tree diff (recursive, guarded by maxFiles default 5000)
 scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"diff","dir":"/path/proj"}' --timeout 30
+
+# Working-tree diff summary without full change list; maxFiles:0 disables guard explicitly
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"diff","dir":"/path/proj","summaryOnly":true,"maxFiles":0}' --timeout 30
+
+# Working-tree subtree diff for a directory path, still guarded by maxFiles
+scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"diff","dir":"/path/proj","filepath":"src","maxFiles":1000}' --timeout 30
 
 # Ref-to-ref diff (HEAD~N supported, filterable by filepath subtree)
 scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '{"command":"diff","dir":"/path/proj","refA":"HEAD~1","refB":"HEAD"}' --timeout 30
@@ -114,8 +122,9 @@ GitHub: use a Personal Access Token with `repo` scope. See README.md for provide
 
 # Gotchas
 
-- `diff` working-tree mode uses `statusMatrix` (recursive). Statuses are `*added` / `*modified` / `*deleted` / `added` / `modified` / `deleted` / `unmodified`, where the `*` prefix means "unstaged".
-- `diff` ref-to-ref mode supports `HEAD~N` and `<ref>^N` via custom resolver (isomorphic-git's `TREE({ref})` only takes concrete refs / oids).
+- `diff` working-tree mode uses `statusMatrix` (recursive). It is protected by non-negative integer `maxFiles` (default `5000`; `0` disables) and supports `summaryOnly:true`. With `filepath` set to a directory, it runs a guarded subtree diff; with `filepath` set to a file, it returns lightweight single-file `git.status`. Statuses include `*added` / `*modified` / `*deleted` / `*undeleted` / `*undeletemodified` / `added` / `modified` / `deleted` / `unmodified` / `unknown(...)`, where the `*` prefix means "unstaged".
+- The shared FS adapter caches UTF-8 reads of root or nested `.gitignore` files and `.git/info/exclude` during a single command lifecycle, then invalidates the cache on writes/removes/renames. This reduces repeated FileManager bridge calls in large repos.
+- `diff` ref-to-ref mode supports `HEAD~N` first-parent ancestry and `<ref>^N` parent selection via custom resolver (isomorphic-git's `TREE({ref})` only takes concrete refs / oids).
 - `commit` resolves author in order: `params.author` → `git config user.*` → `{name:"Scripting Agent", email:"agent@scripting.fun"}`.
 - `init` only writes default `user.name` / `user.email` if not already set — won't clobber existing config.
 - `.git` is **never** in the workdir. Use `command:"list"` to inspect the project → gitdir mapping.

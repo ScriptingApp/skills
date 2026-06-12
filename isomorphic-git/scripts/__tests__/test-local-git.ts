@@ -7,6 +7,7 @@
 
 import { Script } from "scripting"
 import { loadBufferPolyfill } from "../polyfills"
+import { createFS } from "../fs-adapter"
 
 declare const Buffer: any
 
@@ -55,127 +56,6 @@ class ReadableBytes extends Uint8Array {
     const e = Math.min(this.length, end !== undefined ? end : this.length)
     if (e <= s) return new ReadableBytes(0)
     return new ReadableBytes(this.buffer, this.byteOffset + s, e - s)
-  }
-}
-
-// === Git 内部路径模式 ===
-const GIT_INTERNAL_PATTERNS = [
-  'HEAD', 'config', 'index', 'COMMIT_EDITMSG', 'MERGE_HEAD',
-  'FETCH_HEAD', 'ORIG_HEAD', 'packed-refs',
-  'objects/', 'refs/', 'info/', 'hooks/', 'logs/',
-  'description', 'shallow', 'deepen'
-]
-
-function isGitInternal(filepath: string): boolean {
-  if (filepath.startsWith('.git/') || filepath === '.git') return true
-  for (const pattern of GIT_INTERNAL_PATTERNS) {
-    if (filepath === pattern || filepath.startsWith(pattern)) return true
-  }
-  return false
-}
-
-function createFS(gitdir: string, workdir: string) {
-  function resolvePath(filepath: string): string {
-    if (filepath.startsWith('/')) return filepath
-    const cleanPath = filepath.startsWith('.git/') ? filepath.substring(5) : filepath
-    if (isGitInternal(cleanPath)) {
-      return gitdir + '/' + cleanPath
-    }
-    return workdir + '/' + filepath
-  }
-
-  return {
-    async readFile(filepath: string, opts?: any): Promise<any> {
-      const resolved = resolvePath(filepath)
-      try {
-        if (opts?.encoding === 'utf8') {
-          return await FileManager.readAsString(resolved, 'utf8')
-        }
-        const bytes = await FileManager.readAsBytes(resolved)
-        // 包装为 Buffer（全局 polyfill），提供完整的 Buffer API
-        return Buffer.from(bytes)
-      } catch (e: any) {
-        const err = new Error(`ENOENT: no such file or directory, open '${filepath}'`)
-        ;(err as any).code = 'ENOENT'
-        throw err
-      }
-    },
-
-    async writeFile(filepath: string, data: any, _opts?: any): Promise<void> {
-      const resolved = resolvePath(filepath)
-      const parentDir = resolved.substring(0, resolved.lastIndexOf('/'))
-      try {
-        if (!await FileManager.exists(parentDir)) {
-          await FileManager.createDirectory(parentDir, true)
-        }
-      } catch (_e) { /* 忽略 */ }
-      if (typeof data === 'string') {
-        await FileManager.writeAsString(resolved, data, 'utf8')
-      } else {
-        await FileManager.writeAsBytes(resolved, data)
-      }
-    },
-
-    async mkdir(filepath: string, _opts?: any): Promise<void> {
-      const resolved = resolvePath(filepath)
-      try { await FileManager.createDirectory(resolved, true) } catch (_e) { /* 已存在 */ }
-    },
-
-    async rmdir(filepath: string): Promise<void> {
-      await FileManager.remove(resolvePath(filepath))
-    },
-
-    async unlink(filepath: string): Promise<void> {
-      await FileManager.remove(resolvePath(filepath))
-    },
-
-    async exists(filepath: string): Promise<boolean> {
-      try { return await FileManager.exists(resolvePath(filepath)) } catch (_e) { return false }
-    },
-
-    async readdir(filepath: string): Promise<string[]> {
-      return await FileManager.readDirectory(resolvePath(filepath))
-    },
-
-    async stat(filepath: string): Promise<any> {
-      const resolved = resolvePath(filepath)
-      try {
-        const st = await FileManager.stat(resolved)
-        const isFile = await FileManager.isFile(resolved)
-        const isDir = await FileManager.isDirectory(resolved)
-        return {
-          type: isFile ? 'file' : isDir ? 'dir' : 'symlink',
-          mode: isDir ? 0o40000 : 0o100644,
-          size: st.size || 0,
-          ino: 0,
-          mtimeMs: (st.modificationDate || 0) * 1000,
-          ctimeMs: (st.creationDate || 0) * 1000,
-          isFile: () => isFile,
-          isDirectory: () => isDir,
-          isSymbolicLink: () => false,
-        }
-      } catch (e) {
-        const err = new Error(`ENOENT: no such file or directory, stat '${filepath}'`)
-        ;(err as any).code = 'ENOENT'
-        throw err
-      }
-    },
-
-    async lstat(filepath: string): Promise<any> {
-      return this.stat(filepath)
-    },
-
-    async readlink(filepath: string): Promise<string> {
-      return FileManager.destinationOfSymbolicLink(resolvePath(filepath))
-    },
-
-    async symlink(target: string, filepath: string): Promise<void> {
-      await FileManager.createLink(resolvePath(filepath), target)
-    },
-
-    async rename(oldPath: string, newPath: string): Promise<void> {
-      await FileManager.rename(resolvePath(oldPath), resolvePath(newPath))
-    },
   }
 }
 

@@ -6,7 +6,8 @@
 import { Script } from "scripting"
 import { promptForAuth } from "./git-auth-page"
 import { loadBufferPolyfill } from "./polyfills"
-
+import { createFS } from "./fs-adapter"
+import { workingTreeDiffWithGuard } from "./diff-utils"
 declare const Buffer: any
 declare const fetch: any
 
@@ -51,8 +52,9 @@ interface GitCommand {
   noCheckout?: boolean
   // 内联认证（可选，优先于 Keychain / 弹窗）
   auth?: { username: string; password: string }
-  // statusMatrix
-  // (no extra params)
+  // statusMatrix / diff protection
+  maxFiles?: number  // max workdir paths to scan for full working-tree diff; 0 disables limit
+  summaryOnly?: boolean  // return status counts instead of full change list for working-tree diff
 }
 
 // === 工具函数 ===
@@ -99,144 +101,6 @@ async function getGitdir(projectDir: string, repoName?: string): Promise<string>
   repoMap[projectDir] = safeName
   await FileManager.writeAsString(REPO_MAP_FILE, JSON.stringify(repoMap, null, 2), 'utf8')
   return GIT_REPOS_DIR + "/" + safeName
-}
-
-// 创建 FS 适配器（分离 gitdir 和 workdir）
-function createFS(gitdir: string, workdir: string) {
-  // .git 内部路径模式
-  const GIT_INTERNAL_PATTERNS = [
-    'HEAD', 'config', 'index', 'COMMIT_EDITMSG', 'MERGE_HEAD',
-    'FETCH_HEAD', 'ORIG_HEAD', 'packed-refs',
-    'objects/', 'refs/', 'info/', 'hooks/', 'logs/',
-    'description', 'shallow', 'deepen'
-  ]
-
-  function isGitInternal(filepath: string): boolean {
-    if (filepath.startsWith('.git/') || filepath === '.git') return true
-    for (const pattern of GIT_INTERNAL_PATTERNS) {
-      if (filepath === pattern || filepath.startsWith(pattern)) return true
-    }
-    return false
-  }
-
-  function resolvePath(filepath: string): string {
-    if (filepath.startsWith('/')) return filepath
-    const cleanPath = filepath.startsWith('.git/') ? filepath.substring(5) : filepath
-    if (isGitInternal(cleanPath)) {
-      return gitdir + '/' + cleanPath
-    }
-    return workdir + '/' + filepath
-  }
-
-  return {
-    async readFile(filepath: string, opts?: any): Promise<any> {
-      const resolved = resolvePath(filepath)
-      try {
-        // 处理 opts 是字符串的情况（如 'utf8'）或对象的情况（如 { encoding: 'utf8' }）
-        const encoding = typeof opts === 'string' ? opts : opts?.encoding
-        if (encoding === 'utf8') {
-          return await FileManager.readAsString(resolved, 'utf8')
-        }
-        const bytes = await FileManager.readAsBytes(resolved)
-        return Buffer.from(bytes)
-      } catch (e: any) {
-        const err = new Error(`ENOENT: no such file or directory, open '${filepath}'`)
-        ;(err as any).code = 'ENOENT'
-        throw err
-      }
-    },
-
-    async writeFile(filepath: string, data: any, _opts?: any): Promise<void> {
-      const resolved = resolvePath(filepath)
-      const parentDir = resolved.substring(0, resolved.lastIndexOf('/'))
-      try {
-        if (!await FileManager.exists(parentDir)) {
-          await FileManager.createDirectory(parentDir, true)
-        }
-      } catch (_e) { /* 忽略 */ }
-      if (typeof data === 'string') {
-        await FileManager.writeAsString(resolved, data, 'utf8')
-        return
-      }
-      // 规范化二进制为准确范围的 Uint8Array
-      // 顺序重要：Buffer extends Uint8Array，必须先检查 Buffer.isBuffer / ArrayBuffer
-      let bytes: Uint8Array
-      if (typeof Buffer !== 'undefined' && Buffer.isBuffer && Buffer.isBuffer(data)) {
-        bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-      } else if (data instanceof ArrayBuffer) {
-        bytes = new Uint8Array(data)
-      } else if (data instanceof Uint8Array) {
-        // 明确带 byteOffset/byteLength 以防 sub-view
-        bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-      } else {
-        bytes = new Uint8Array(data)
-      }
-      await FileManager.writeAsBytes(resolved, bytes)
-    },
-
-    async mkdir(filepath: string, _opts?: any): Promise<void> {
-      const resolved = resolvePath(filepath)
-      try { await FileManager.createDirectory(resolved, true) } catch (_e) { /* 已存在 */ }
-    },
-
-    async rmdir(filepath: string): Promise<void> {
-      const resolved = resolvePath(filepath)
-      try { await FileManager.remove(resolved) } catch (_e) { /* may not exist */ }
-    },
-
-    async unlink(filepath: string): Promise<void> {
-      const resolved = resolvePath(filepath)
-      try { await FileManager.remove(resolved) } catch (_e) { /* may not exist */ }
-    },
-
-    async exists(filepath: string): Promise<boolean> {
-      try { return await FileManager.exists(resolvePath(filepath)) } catch (_e) { return false }
-    },
-
-    async readdir(filepath: string): Promise<string[]> {
-      return await FileManager.readDirectory(resolvePath(filepath))
-    },
-
-    async stat(filepath: string): Promise<any> {
-      const resolved = resolvePath(filepath)
-      try {
-        const st = await FileManager.stat(resolved)
-        const isFile = await FileManager.isFile(resolved)
-        const isDir = await FileManager.isDirectory(resolved)
-        return {
-          type: isFile ? 'file' : isDir ? 'dir' : 'symlink',
-          mode: isDir ? 0o40000 : 0o100644,
-          size: st.size || 0,
-          ino: 0,
-          mtimeMs: (st.modificationDate || 0) * 1000,
-          ctimeMs: (st.creationDate || 0) * 1000,
-          isFile: () => isFile,
-          isDirectory: () => isDir,
-          isSymbolicLink: () => false,
-        }
-      } catch (e) {
-        const err = new Error(`ENOENT: no such file or directory, stat '${filepath}'`)
-        ;(err as any).code = 'ENOENT'
-        throw err
-      }
-    },
-
-    async lstat(filepath: string): Promise<any> {
-      return this.stat(filepath)
-    },
-
-    async readlink(filepath: string): Promise<string> {
-      return FileManager.destinationOfSymbolicLink(resolvePath(filepath))
-    },
-
-    async symlink(target: string, filepath: string): Promise<void> {
-      await FileManager.createLink(resolvePath(filepath), target)
-    },
-
-    async rename(oldPath: string, newPath: string): Promise<void> {
-      await FileManager.rename(resolvePath(oldPath), resolvePath(newPath))
-    },
-  }
 }
 
 // 加载 isomorphic-git
@@ -298,13 +162,16 @@ async function gitAdd(git: any, fs: any, dir: string, filepath: string): Promise
       await git.remove({ fs, dir, gitdir, filepath })
       return { message: `Staged deletion: ${filepath}` }
     } catch (e) {
-      // 如果 remove 失败，尝试使用 add
-      await git.add({ fs, dir, gitdir, filepath })
+      // 如果 remove 失败，尝试使用 add。这里保持单文件路径语义，不额外限流。
+      await git.add({ fs, dir, gitdir, filepath, parallel: false })
       return { message: `Staged: ${filepath}` }
     }
   }
   
-  await git.add({ fs, dir, gitdir, filepath })
+  // 在 iOS Scripting 环境中，isomorphic-git 默认 parallel:true 会对大目录触发无界 Promise.all，
+  // 大量 FileManager bridge 调用 + hash/deflate 写对象容易造成 App 假死。
+  // P0 先用串行递归换稳定性；后续可实现受控并发池。
+  await git.add({ fs, dir, gitdir, filepath, parallel: false })
   return { message: `Staged: ${filepath}` }
 }
 
@@ -386,29 +253,6 @@ async function gitCheckout(git: any, fs: any, dir: string, ref: string, filepath
   }
 }
 
-// statusMatrix [head, workdir, stage] 元组 → 语义化状态名
-// 对齐 git.status 字符串返回（'modified'/'*modified'/'added'/'deleted' 等）
-function matrixToStatus(head: number, work: number, stage: number): string {
-  const key = `${head}${work}${stage}`
-  switch (key) {
-    case '003': return '*added'           // new, staged then deleted from workdir
-    case '020': return '*added'           // new, untracked
-    case '022': return 'added'            // new, staged
-    case '023': return '*added'           // new, staged then modified
-    case '100': return 'deleted'          // deleted, staged
-    case '101': return '*deleted'         // deleted, unstaged
-    case '111': return 'unmodified'
-    case '110': return '*undeletemodified'
-    case '112': return '*modified'
-    case '113': return '*modified'
-    case '120': return '*undeleted'
-    case '121': return '*modified'        // modified, unstaged
-    case '122': return 'modified'         // modified, staged
-    case '123': return '*modified'        // modified, staged then modified again
-    default:    return `unknown(${key})`
-  }
-}
-
 // 解析“类 ref”：支持 <ref>~N / <ref>^ 简写，输出具体 commit oid。
 // isomorphic-git 本身不该析这些语法，手工走 readCommit 递归拿 parent。
 async function resolveReflike(git: any, fs: any, dir: string, gitdir: string, ref: string): Promise<string> {
@@ -418,8 +262,23 @@ async function resolveReflike(git: any, fs: any, dir: string, gitdir: string, re
     return await git.resolveRef({ fs, dir, gitdir, ref })
   }
   const [, base, op, nStr] = m
-  const n = op === '~' ? (nStr ? parseInt(nStr, 10) : 1) : (nStr ? parseInt(nStr, 10) : 1)
   let oid = await resolveReflike(git, fs, dir, gitdir, base)
+  if (op === '^') {
+    const parentIndex = nStr ? parseInt(nStr, 10) : 1
+    if (!Number.isFinite(parentIndex) || parentIndex < 1) {
+      throw new Error(`invalid parent selector '${ref}'`)
+    }
+    const c = await git.readCommit({ fs, dir, gitdir, oid })
+    if (!c.commit.parent || c.commit.parent.length < parentIndex) {
+      throw new Error(`ref '${ref}' parent ${parentIndex} does not exist`)
+    }
+    return c.commit.parent[parentIndex - 1]
+  }
+
+  const n = nStr ? parseInt(nStr, 10) : 1
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`invalid ancestor selector '${ref}'`)
+  }
   for (let i = 0; i < n; i++) {
     const c = await git.readCommit({ fs, dir, gitdir, oid })
     if (!c.commit.parent || c.commit.parent.length === 0) {
@@ -430,7 +289,7 @@ async function resolveReflike(git: any, fs: any, dir: string, gitdir: string, re
   return oid
 }
 
-async function gitDiff(git: any, fs: any, dir: string, filepath?: string, refA?: string, refB?: string): Promise<any> {
+async function gitDiff(git: any, fs: any, dir: string, filepath?: string, refA?: string, refB?: string, maxFiles?: number, summaryOnly?: boolean): Promise<any> {
   const gitdir = await getGitdir(dir)
   
   // refA && refB 间的真 diff：递归遍历两该 tree，对比每个路径的 blob OID
@@ -468,24 +327,18 @@ async function gitDiff(git: any, fs: any, dir: string, filepath?: string, refA?:
     return { refA, refB, changes }
   }
   
-  // 单文件状态
+  // 文件/子树工作区状态。目录路径走 guarded statusMatrix 子树过滤；文件路径保留轻量 git.status。
   if (filepath) {
+    const fullPath = dir + '/' + filepath
+    const isDir = await FileManager.isDirectory(fullPath).catch(() => false)
+    if (isDir) {
+      return await workingTreeDiffWithGuard({ git, fs, dir, gitdir, maxFiles, summaryOnly, filepath })
+    }
     const fileStatus = await git.status({ fs, dir, gitdir, filepath })
     return { filepath, status: fileStatus }
   }
   
-  // 工作区全量变更（递归所有子目录，由 isomorphic-git 内部走 tree+index+workdir 三方对比）
-  const matrix: any[][] = await git.statusMatrix({ fs, dir, gitdir })
-  const changes: Array<{ filepath: string; status: string }> = []
-  for (const row of matrix) {
-    const fp = row[0] as string
-    const head = row[1] as number
-    const work = row[2] as number
-    const stage = row[3] as number
-    if (head === 1 && work === 1 && stage === 1) continue // unmodified
-    changes.push({ filepath: fp, status: matrixToStatus(head, work, stage) })
-  }
-  return { changes }
+  return await workingTreeDiffWithGuard({ git, fs, dir, gitdir, maxFiles, summaryOnly })
 }
 
 async function gitRestore(git: any, fs: any, dir: string, filepath: string): Promise<any> {
@@ -618,14 +471,14 @@ function createHttpTransport(username?: string, password?: string) {
       try {
         // 使用 Scripting 的 data() 方法获取 Data 对象
         const dataObj = await response.data()
-        if (dataObj && typeof dataObj.toUint8Array === 'function') {
-          const uint8Data = dataObj.toUint8Array()
-          // 关键修复：toUint8Array() 可能返回基于只读 ArrayBuffer 的视图
-          // 必须复制到新的可写 ArrayBuffer，否则 isomorphic-git 的 StreamReader
-          // 在 buffer.slice() 时会得到只读视图，导致 "Attempted to assign to readonly property"
-          const mutableCopy = new Uint8Array(uint8Data.length)
-          mutableCopy.set(uint8Data)
-          result = Buffer.from(mutableCopy)
+        if (dataObj && typeof dataObj.toArrayBuffer === 'function') {
+          const ab = dataObj.toArrayBuffer()
+          // 关键修复：Scripting iOS 原生桥返回的 ArrayBuffer 是只读的
+          // 必须复制到全新的可写 ArrayBuffer，再用 Buffer.from(ab) 构造
+          // 不能用 Buffer.from(uint8array) — polyfill 可能共享底层只读内存
+          const writable = new ArrayBuffer(ab.byteLength)
+          new Uint8Array(writable).set(new Uint8Array(ab))
+          result = Buffer.from(writable)
         } else {
           result = Buffer.alloc(0)
         }
@@ -634,8 +487,9 @@ function createHttpTransport(username?: string, password?: string) {
           // 备用方案：使用 arrayBuffer
           const responseData = await response.arrayBuffer()
           // 同样需要复制以确保可写
-          const mutableCopy = new Uint8Array(responseData)
-          result = Buffer.from(mutableCopy)
+          const writable2 = new ArrayBuffer(responseData.byteLength)
+          new Uint8Array(writable2).set(new Uint8Array(responseData))
+          result = Buffer.from(writable2)
         } catch (e2) {
           result = Buffer.alloc(0)
         }
@@ -866,7 +720,7 @@ async function gitRemoveRepo(dir: string): Promise<any> {
 
 async function main() {
   const params = Script.queryParameters as unknown as GitCommand
-  const { command, dir, name, filepath, message, author, depth, ref, checkout, refA, refB, op, refIdx, url, remote, force, tag, oid, lightweight, singleBranch, noCheckout, auth } = params
+  const { command, dir, name, filepath, message, author, depth, ref, checkout, refA, refB, op, refIdx, url, remote, force, tag, oid, lightweight, singleBranch, noCheckout, auth, maxFiles, summaryOnly } = params
   
   if (!command) {
     Script.exit({ ok: false, error: "Missing 'command' parameter" })
@@ -925,7 +779,7 @@ async function main() {
         
       case 'diff':
         if (!dir) throw new Error("Missing 'dir' parameter")
-        result = await gitDiff(git, createFS(await getGitdir(dir), dir), dir, filepath, refA, refB)
+        result = await gitDiff(git, createFS(await getGitdir(dir), dir), dir, filepath, refA, refB, maxFiles, summaryOnly)
         break
         
       case 'restore':

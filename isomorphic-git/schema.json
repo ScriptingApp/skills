@@ -98,6 +98,15 @@
         "password": { "type": "string" }
       },
       "description": "Optional inline credentials for push/pull/clone. When provided, bypasses Keychain lookup and the auth prompt page. Useful for CI / automated scripts."
+    },
+    "maxFiles": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Working-tree diff guard. Max paths to scan before returning a truncated warning. Only applies to diff without refA/refB; can also guard directory filepath subtree diffs. Use 0 to disable. Default: 5000."
+    },
+    "summaryOnly": {
+      "type": "boolean",
+      "description": "For working-tree diff, return status counts without the full change list."
     }
   },
   "additionalProperties": false

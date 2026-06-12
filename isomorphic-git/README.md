@@ -39,10 +39,16 @@ isomorphic-git/
 ├── spec.md               ← internal design notes
 ├── scripts/
 │   ├── git.ts            ← skill entry
+│   ├── fs-adapter.ts      ← shared Scripting FileManager adapter for isomorphic-git
+│   ├── diff-utils.ts      ← guarded working-tree diff helpers
 │   ├── git-auth-page.tsx ← Keychain auth prompt UI (used for push/pull/clone)
 │   ├── polyfills.ts      ← Buffer/TextEncoder polyfills
 │   └── __tests__/        ← test scripts (not loaded at runtime)
 │       ├── test-local-git.ts
+│       ├── test-stage-performance-regression.ts
+│       ├── test-diff-guard.ts
+│       ├── test-ignore-cache.ts
+│       ├── test-path-collisions.ts
 │       ├── test-auth-page.tsx
 │       └── _probe_walk.ts
 └── vendor/               ← UMD bundles
@@ -98,17 +104,31 @@ Test scripts live in `scripts/__tests__/` and are never loaded by the main skill
 # Auth page (opens UI; cancel to test the null path)
 scripting-ts run <skill_dir>/scripts/__tests__/test-auth-page.tsx --timeout 60
 
-# Local end-to-end (init → add → commit → log → status). DEPRECATED — functionality is now covered by scripts/git.ts.
+# Local end-to-end reference (init → add → commit → log → status). Uses a copied test FS adapter.
 scripting-ts run <skill_dir>/scripts/__tests__/test-local-git.ts --timeout 60
 
 # Probe which isomorphic-git APIs the UMD bundle exposes
 scripting-ts run <skill_dir>/scripts/__tests__/_probe_walk.ts --timeout 60
+
+# Stage/add performance regression
+scripting-ts run <skill_dir>/scripts/__tests__/test-stage-performance-regression.ts --timeout 90
+
+# Working-tree diff guard regression
+scripting-ts run <skill_dir>/scripts/__tests__/test-diff-guard.ts --timeout 120
+
+# FS adapter .gitignore / info/exclude cache regression
+scripting-ts run <skill_dir>/scripts/__tests__/test-ignore-cache.ts --timeout 60
+
+# Workdir paths that look like git internals (config/HEAD/refs/*) still commit from workdir
+scripting-ts run <skill_dir>/scripts/__tests__/test-path-collisions.ts --timeout 90
 ```
 
 ## Implementation notes
 
-- **`diff` working-tree mode** uses `git.statusMatrix` for recursive 3-way comparison (HEAD × index × workdir).
-- **`diff` ref-to-ref mode** uses `git.walk` with two `TREE` walkers, comparing blob OIDs. A custom `resolveReflike` resolves `HEAD~N` / `<ref>^N` syntax to concrete commit OIDs since `TREE({ref})` doesn't parse relative refs.
+- **`diff` working-tree mode** uses `git.statusMatrix` for recursive 3-way comparison (HEAD × index × workdir). It is guarded by `maxFiles` (non-negative integer, default `5000`, use `0` to disable) and supports `summaryOnly:true` to return counts without the full change list. With `filepath` set to a directory, it runs a guarded subtree diff; with `filepath` set to a file, it uses lightweight single-file `git.status`.
+- **Shared FS adapter**: `scripts/fs-adapter.ts` is the single production FileManager adapter used by `git.ts` and regression tests; tests add instrumentation via adapter hooks instead of copying FS logic. It caches UTF-8 reads of `.gitignore` and `.git/info/exclude` within one adapter lifecycle and invalidates that cache on writes/removes/renames.
+- **Stage/add performance P0**: the FS adapter returns stable POSIX-like stat fields (`dev/ino/uid/gid/...`) so isomorphic-git's index stat cache can skip unchanged files; command-level `add` passes `parallel:false` to avoid unbounded FileManager concurrency on iOS.
+- **`diff` ref-to-ref mode** uses `git.walk` with two `TREE` walkers, comparing blob OIDs. A custom `resolveReflike` resolves `HEAD~N` first-parent ancestry and `<ref>^N` parent selection syntax to concrete commit OIDs since `TREE({ref})` doesn't parse relative refs.
 - **`revert`** is implemented via `resetIndex` to the parent tree + a new commit (isomorphic-git has no native revert).
 - **Stash** depends on isomorphic-git's `GitStashManager` reading files with the `read(path, 'utf8')` shape — our FS adapter's `readFile(filepath, opts)` accepts both string-encoding and object-encoding opts.
 
