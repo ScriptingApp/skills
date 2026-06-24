@@ -97,6 +97,10 @@ export default function ItineraryMapView({
                 action={() => {
                   setSelectedDay(index)
                   setSelectedStop(null)
+                  const dayRegion = calculateRegion(
+                    days[index].stops.map(s => s.coordinate)
+                  )
+                  cameraPosition.setValue(MapCameraPosition.region(dayRegion))
                 }}
                 buttonStyle={selectedDay === index ? "borderedProminent" : "bordered"}
                 controlSize="small"

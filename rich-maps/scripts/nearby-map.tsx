@@ -13,6 +13,8 @@ export function NearbyMapView({
   showInfo = true,
 }: NearbyMapProps) {
   
+  const [selected, setSelected] = useState<number | null>(null)
+
   // 搜索结果
   const searchResults = useAsync(async () => {
     try {
@@ -33,15 +35,32 @@ export function NearbyMapView({
     }
   })
 
+  const baseRegion = {
+    center,
+    span: {
+      latitudeDelta: radius / 111000 * 2,
+      longitudeDelta: radius / 111000 * 2,
+    },
+  }
+
   const cameraPosition = useObservable(
-    MapCameraPosition.region({
-      center,
-      span: {
-        latitudeDelta: radius / 111000 * 2,
-        longitudeDelta: radius / 111000 * 2,
-      },
-    })
+    MapCameraPosition.region(baseRegion)
   )
+
+  const focus = (index: number, coordinate?: MapCoordinate) => {
+    if (selected === index || !coordinate) {
+      setSelected(null)
+      cameraPosition.setValue(MapCameraPosition.region(baseRegion))
+    } else {
+      setSelected(index)
+      cameraPosition.setValue(
+        MapCameraPosition.region({
+          center: coordinate,
+          span: { latitudeDelta: 0.008, longitudeDelta: 0.008 },
+        })
+      )
+    }
+  }
 
   return (
     <VStack spacing={0} alignment="leading">
@@ -73,7 +92,7 @@ export function NearbyMapView({
           <Marker
             key={index}
             item={item}
-            tint="systemRed"
+            tint={selected === index ? "systemOrange" : "systemRed"}
           />
         ))}
       </Map>
@@ -82,31 +101,35 @@ export function NearbyMapView({
       {showInfo && searchResults && searchResults.length > 0 ? (
         <ScrollView axes="horizontal" padding={{ horizontal: 16, top: 10, bottom: 12 }}>
           <HStack spacing={8}>
-            {searchResults.map((item, index) => (
+            {searchResults.map((item, index) => {
+              const isSelected = selected === index
+              return (
               <VStack
                 key={index}
                 spacing={4}
                 padding={10}
                 frame={{ width: 130, alignment: "leading" }}
-                background="systemGray6"
+                background={isSelected ? "systemBlue" : "systemGray6"}
                 clipShape={{ type: "rect", cornerRadius: 12 }}
                 alignment="leading"
+                onTapGesture={() => focus(index, item.coordinate)}
               >
-                <Text font="subheadline" fontWeight="medium" foregroundStyle="label" lineLimit={1}>
+                <Text font="subheadline" fontWeight="medium" foregroundStyle={isSelected ? "white" : "label"} lineLimit={1}>
                   {item.name || "未知地点"}
                 </Text>
                 {item.pointOfInterestCategory ? (
-                  <Text font="caption2" foregroundStyle="secondaryLabel" lineLimit={1}>
+                  <Text font="caption2" foregroundStyle={isSelected ? "white" : "secondaryLabel"} lineLimit={1}>
                     {getCategoryEmoji(item.pointOfInterestCategory)} {item.pointOfInterestCategory}
                   </Text>
                 ) : null}
                 {item.formattedAddress ? (
-                  <Text font="caption2" foregroundStyle="tertiaryLabel" lineLimit={1}>
+                  <Text font="caption2" foregroundStyle={isSelected ? "white" : "tertiaryLabel"} lineLimit={1}>
                     {item.formattedAddress}
                   </Text>
                 ) : null}
               </VStack>
-            ))}
+              )
+            })}
           </HStack>
         </ScrollView>
       ) : null}
