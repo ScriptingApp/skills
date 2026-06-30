@@ -1,10 +1,10 @@
 /**
- * ssh-config-page.tsx - SSH 服务器管理页面
- * 
- * - 列出所有已配置的服务器（支持多台）
- * - 添加新服务器（sheet 弹出）/ 编辑已有服务器（sheet 弹出）
- * - 滑动删除服务器
- * - 密码/密钥只存 Keychain，不返回给调用方
+ * ssh-config-page.tsx - SSH server management UI.
+ *
+ * - Lists all configured servers.
+ * - Adds new servers and edits existing servers in sheets.
+ * - Deletes servers from the edit page.
+ * - Stores passwords and private keys only in Keychain; never returns secrets to callers.
  */
 
 import { Script, Navigation, NavigationStack, List, Section,
@@ -50,7 +50,7 @@ function safeInfo(c: ServerConfig) {
   return { name: c.name, host: c.host, username: c.username, port: c.port, authType: c.authType }
 }
 
-// ==================== 添加/编辑表单 ====================
+// ==================== Add/Edit form ====================
 
 function ServerFormPage({
   editName,
@@ -75,10 +75,10 @@ function ServerFormPage({
 
   const isEdit = !!existing
 
-  const handleSave = () => {
+  const buildConfigFromForm = (): ServerConfig | null => {
     const name = nameObs.value.trim()
     const host = hostObs.value.trim()
-    if (!name || !host) return
+    if (!name || !host) return null
 
     const config: ServerConfig = {
       name,
@@ -105,7 +105,7 @@ function ServerFormPage({
       }
     }
 
-    // sudo 密码
+    // Preserve or update the sudo password without exposing it outside Keychain-backed config.
     const newSudoPwd = sudoPasswordObs.value
     if (newSudoPwd) {
       config.sudoPassword = newSudoPwd
@@ -113,7 +113,47 @@ function ServerFormPage({
       config.sudoPassword = existing.sudoPassword
     }
 
+    return config
+  }
+
+  const showAlert = async (title: string, message: string) => {
+    await Dialog.alert({ title, message })
+  }
+
+  const handleTestConnection = async () => {
+    const config = buildConfigFromForm()
+    if (!config) {
+      await showAlert(
+        isZh ? "缺少信息" : "Missing Info",
+        isZh ? "请先填写名称和主机。" : "Please enter name and host first."
+      )
+      return
+    }
+
+    let ssh: SSHClient | null = null
+    try {
+      ssh = await connectSSH(config)
+      await ssh.executeCommand("echo 'ok'")
+      await showAlert(
+        isZh ? "连接成功" : "Connection Succeeded",
+        `${config.username}@${config.host}:${config.port}`
+      )
+    } catch (error) {
+      await showAlert(
+        isZh ? "连接失败" : "Connection Failed",
+        String(error)
+      )
+    } finally {
+      if (ssh) await ssh.close()
+    }
+  }
+
+  const handleSave = () => {
+    const config = buildConfigFromForm()
+    if (!config) return
+
     const names = getServerNames()
+    const name = config.name
     if (isEdit && editName !== name) {
       Keychain.remove(KC_PREFIX + editName!)
       const idx = names.indexOf(editName as string)
@@ -152,7 +192,7 @@ function ServerFormPage({
         {usePasswordObs.value ? (
           <Section footer={
             <Text foregroundStyle="secondaryLabel">
-              {isZh ? "密码安全存储在 Keychain 中" : "Password stored securely in Keychain"}
+              {isZh ? "密码将安全存储在 Keychain 中。留空可保留已有密码。" : "The password is stored securely in Keychain. Leave empty to keep the existing password."}
             </Text>
           }>
             <SecureField
@@ -166,7 +206,7 @@ function ServerFormPage({
             header={<Text>SSH {isZh ? "密钥" : "Key"}</Text>}
             footer={
               <Text foregroundStyle="secondaryLabel">
-                {isZh ? "粘贴私钥内容，留空则保持已有密钥不变" : "Paste private key. Leave empty to keep existing."}
+                {isZh ? "粘贴 ED25519 或 RSA 私钥内容；编辑时留空会保留已有私钥。" : "Paste an ED25519 or RSA private key. When editing, leave empty to keep the existing key."}
               </Text>
             }
           >
@@ -174,7 +214,7 @@ function ServerFormPage({
             <SecureField
               title={isZh ? "密钥内容" : "Key Content"}
               value={keyContentObs}
-              prompt={isEdit ? (isZh ? "留空保持不变" : "Keep unchanged") : (isZh ? "粘贴私钥" : "Paste key")}
+              prompt={isEdit ? (isZh ? "留空保持不变" : "Keep unchanged") : (isZh ? "粘贴私钥内容" : "Paste private key")}
             />
           </Section>
         )}
@@ -183,7 +223,7 @@ function ServerFormPage({
           header={<Text>{isZh ? "Sudo 设置" : "Sudo Settings"}</Text>}
           footer={
             <Text foregroundStyle="secondaryLabel">
-              {isZh ? "配置 sudo 密码后，可执行需要提权的操作。密码安全存储在 Keychain 中。" : "Configure sudo password for privileged commands. Stored securely in Keychain."}
+              {isZh ? "配置 sudo 密码后，可执行需要提权的命令。密码仅保存在 Keychain 中。" : "Configure a sudo password to run privileged commands. The password is stored only in Keychain."}
             </Text>
           }
         >
@@ -195,6 +235,11 @@ function ServerFormPage({
         </Section>
 
         <Section>
+          <Button
+            title={isZh ? "测试连接" : "Test Connection"}
+            systemImage="network"
+            action={handleTestConnection}
+          />
           <Button title={isZh ? "保存" : "Save"} action={handleSave} />
         </Section>
 
@@ -218,7 +263,35 @@ function ServerFormPage({
   )
 }
 
-// ==================== 主页面 ====================
+function getAuthMethod(config: ServerConfig): SSHAuthenticationMethod {
+  if (config.authType === "password" && config.password) {
+    return SSHAuthenticationMethod.passwordBased(config.username, config.password)
+  }
+
+  if (config.authType === "key" && config.keyContent) {
+    const keyData = Data.fromString(config.keyContent)
+    if (!keyData) throw new Error(isZh ? "无法解析密钥内容" : "Unable to parse key content")
+    if (config.keyName?.includes("ed25519")) {
+      const auth = SSHAuthenticationMethod.ed25519(config.username, keyData)
+      if (auth) return auth
+    } else if (config.keyName?.includes("rsa")) {
+      const auth = SSHAuthenticationMethod.rsa(config.username, keyData)
+      if (auth) return auth
+    }
+  }
+
+  throw new Error(isZh ? "无法创建 SSH 认证方法，请检查密码或密钥配置" : "Unable to create SSH authentication method. Check password or key settings.")
+}
+
+async function connectSSH(config: ServerConfig): Promise<SSHClient> {
+  return await SSHClient.connect({
+    host: config.host,
+    port: config.port,
+    authenticationMethod: getAuthMethod(config)
+  })
+}
+
+// ==================== Main page ====================
 
 function App() {
   const dismiss = Navigation.useDismiss()
@@ -246,7 +319,7 @@ function App() {
           )
         }}
         sheet={[
-          // 添加服务器 sheet
+          // Add-server sheet
           {
             isPresented: showAddSheet,
             content: (
@@ -256,7 +329,7 @@ function App() {
               />
             )
           },
-          // 编辑服务器 sheet
+          // Edit-server sheet
           {
             isPresented: editingName.value !== null,
             content: editingName.value ? (
@@ -289,7 +362,7 @@ function App() {
         ) : (
           <Section
             header={<Text>{isZh ? "已配置的服务器" : "Configured Servers"}</Text>}
-            footer={<Text>{isZh ? "点击编辑" : "Tap to edit"}</Text>}
+            footer={<Text>{isZh ? "点击服务器进行编辑" : "Tap a server to edit"}</Text>}
           >
             {servers.map(server => (
               <Button key={server.name} action={() => editingName.setValue(server.name)}>
@@ -303,7 +376,7 @@ function App() {
                   <Spacer />
                   <Text font="caption2" foregroundStyle="tertiaryLabel">
                     {server.authType === "password"
-                      ? (isZh ? "密码" : "Pwd")
+                      ? (isZh ? "密码" : "Password")
                       : (isZh ? "密钥" : "Key")}
                   </Text>
                 </HStack>
@@ -316,7 +389,7 @@ function App() {
   )
 }
 
-// ==================== 启动 ====================
+// ==================== Bootstrap ====================
 
 async function run() {
   await Navigation.present(<App />)
