@@ -1,0 +1,67 @@
+{
+  "type": "object",
+  "properties": {
+    "command": {
+      "type": "string",
+      "enum": [
+        "list-chats",
+        "chat-info",
+        "member-count",
+        "admins",
+        "send",
+        "send-photo",
+        "edit",
+        "delete",
+        "pin",
+        "unpin",
+        "test",
+        "config",
+        "status",
+        "help"
+      ],
+      "description": "Command to execute"
+    },
+    "chat_id": {
+      "type": "string",
+      "description": "Target chat ID (optional, uses default if not specified)"
+    },
+    "text": {
+      "type": "string",
+      "description": "Message text (required for send and edit commands)"
+    },
+    "photo": {
+      "type": "string",
+      "description": "Photo URL (required for send-photo command)"
+    },
+    "caption": {
+      "type": "string",
+      "description": "Photo caption (optional for send-photo command)"
+    },
+    "message_id": {
+      "type": "number",
+      "description": "Message ID (required for edit, delete, pin, unpin commands)"
+    },
+    "parse_mode": {
+      "type": "string",
+      "enum": ["Markdown", "MarkdownV2", "HTML"],
+      "description": "Message formatting mode"
+    },
+    "disable_notification": {
+      "type": "boolean",
+      "description": "Send message silently (default: false)"
+    },
+    "disable_notification_pin": {
+      "type": "boolean",
+      "description": "Pin message silently (default: false)"
+    }
+  },
+  "required": ["command"],
+  "if": {
+    "properties": {
+      "command": { "const": "send" }
+    }
+  },
+  "then": {
+    "required": ["text"]
+  }
+}
