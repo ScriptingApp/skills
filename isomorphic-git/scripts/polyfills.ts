@@ -76,7 +76,6 @@ export async function loadBufferPolyfill(): Promise<void> {
   // 设置全局 Buffer
   if (bufExports && bufExports.Buffer) {
     ;(globalThis as any).Buffer = bufExports.Buffer
-    console.log("✅ Buffer polyfill 加载成功 (npm buffer@6)")
   } else {
     console.warn("⚠️ Buffer polyfill 加载失败")
   }

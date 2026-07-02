@@ -1,5 +1,10 @@
 {
-  "icon": "arrow.triangle.branch",
-  "color": "systemGreen",
-  "input_schema_file": "schema.json"
+  "color" : "systemGreen",
+  "icon" : "arrow.triangle.branch",
+  "input_schema_file" : "schema.json",
+  "remoteResource" : {
+    "autoUpdateInterval" : 21600,
+    "hash" : "7f4a74af71943bb481f22ab8e7d73145",
+    "url" : "https:\/\/github.com\/ScriptingApp\/skills\/tree\/main\/isomorphic-git"
+  }
 }

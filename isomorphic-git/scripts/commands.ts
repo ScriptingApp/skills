@@ -42,6 +42,35 @@ export async function gitAdd(git: any, fs: any, dir: string, filepath: string): 
   // 大量 FileManager bridge 调用 + hash/deflate 写对象容易造成 App 假死。
   // P0 先用串行递归换稳定性；后续可实现受控并发池。
   await git.add({ fs, dir, gitdir, filepath, parallel: false })
+
+  // git.add 只 stage 新增/修改，不会 stage 工作区中的删除（对齐原生 `git add -A` 才处理删除）。
+  // filepath === '.' 语义是“暂存全部”，因此这里补扫 statusMatrix，把工作区已删除的文件用 git.remove 补 stage。
+  if (filepath === '.') {
+    // 仅当已有提交（HEAD 存在）时才扫描删除；无 HEAD 时无“已提交但被删”的文件，
+    // 且 statusMatrix 在无 HEAD 仓库上会报错。
+    const hasHead = await git.resolveRef({ fs, dir, gitdir, ref: 'HEAD' }).then(() => true).catch(() => false)
+    let stagedDeletions = 0
+    if (hasHead) {
+      const matrix = await git.statusMatrix({ fs, dir, gitdir })
+      for (const row of matrix) {
+        const fp = row[0] as string
+        const head = row[1] as number
+        const work = row[2] as number
+        // head===1 且 work===0：HEAD 有该文件但工作区已删除。
+        if (head === 1 && work === 0) {
+          await git.remove({ fs, dir, gitdir, filepath: fp })
+          stagedDeletions++
+        }
+      }
+    }
+    return {
+      message: stagedDeletions > 0
+        ? `Staged: . (including ${stagedDeletions} deletion${stagedDeletions > 1 ? 's' : ''})`
+        : `Staged: .`,
+      stagedDeletions,
+    }
+  }
+
   return { message: `Staged: ${filepath}` }
 }
 
@@ -113,8 +142,8 @@ export async function gitCheckout(git: any, fs: any, dir: string, ref: string, f
   const gitdir = await getGitdir(dir)
   
   if (filepath) {
-    // 恢复单个文件
-    await git.checkout({ fs, dir, gitdir, filepaths: [filepath], ref })
+    // 恢复单个文件（语义上就是覆盖工作区），force:true 否则已修改文件会被静默跳过
+    await git.checkout({ fs, dir, gitdir, filepaths: [filepath], ref, force: true })
     return { message: `Restored '${filepath}' from '${ref}'` }
   } else {
     // 切换分支
@@ -215,8 +244,9 @@ export async function gitRestore(git: any, fs: any, dir: string, filepath: strin
   const gitdir = await getGitdir(dir)
   
   // 使用 checkout 恢复文件到 HEAD 状态
+  // force:true 必需 —— 否则 isomorphic-git 遇到工作区已修改的文件会静默跳过，不覆盖
   try {
-    await git.checkout({ fs, dir, gitdir, filepaths: [filepath], ref: 'HEAD' })
+    await git.checkout({ fs, dir, gitdir, filepaths: [filepath], ref: 'HEAD', force: true })
     return { message: `Restored '${filepath}' to HEAD` }
   } catch (e: any) {
     // 如果 HEAD 不存在（还没有提交），删除文件

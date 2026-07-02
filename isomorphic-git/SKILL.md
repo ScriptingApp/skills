@@ -62,7 +62,7 @@ scripting-ts run <skill_dir>/scripts/git.ts --queryparameters '<json>' --timeout
 | Command | Required (in addition to `dir`) | Useful optional |
 |---|---|---|
 | `init` | — | `name` (repoName) |
-| `add` / `rm` | `filepath` (use `"."` to stage all) | — |
+| `add` / `rm` | `filepath` (use `"."` to stage all — **`add "."` also stages deletions**, like `git add -A`) | — |
 | `commit` | `message` | `author` |
 | `log` | — | `depth` |
 | `status` | `filepath` | — |
