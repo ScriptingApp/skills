@@ -103,7 +103,19 @@ export async function gitCommit(git: any, fs: any, dir: string, message: string,
     message,
     author: resolvedAuthor,
   })
-  return { oid, message: "Committed" }
+  // 防御：检测游离 HEAD（detached）。isomorphic-git 在游离 HEAD 下 commit 只会把
+  // 新 commit 写进 HEAD（裸 SHA），当前分支指针不动 —— 之后 `push ref=<branch>`
+  // 会静默推旧值。这里显式暴露，避免用户看不到「提交了但分支没动」。
+  const branch = await git.currentBranch({ fs, dir, gitdir, fullname: false }).catch(() => undefined)
+  if (!branch) {
+    return {
+      oid,
+      message: "Committed",
+      warning: "HEAD 处于游离态（detached HEAD）：本次提交只更新了 HEAD，未前进任何分支。直接 push <branch> 会推旧值。请先 checkout 到分支或将分支指向当前 HEAD。",
+      detached: true,
+    }
+  }
+  return { oid, message: "Committed", branch }
 }
 
 export async function gitLog(git: any, fs: any, dir: string, depth?: number): Promise<any> {

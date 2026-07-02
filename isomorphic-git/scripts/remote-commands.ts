@@ -117,7 +117,26 @@ export async function gitRemote(git: any, fs: any, dir: string, op: string, remo
 export async function gitPush(git: any, fs: any, dir: string, remote?: string, ref?: string, force?: boolean, username?: string, password?: string): Promise<any> {
   const gitdir = await getGitdir(dir)
   const http = createHttpTransport(username, password)
-  
+
+  // 防御：游离 HEAD（detached）下推分支名会静默推分支旧值。
+  // 典型场景：commit 在游离 HEAD 上→HEAD 前进而分支不动→push ref=<branch> 推旧 commit。
+  // 若未显式指定 ref（走 HEAD）则不受影响；若 ref 与 HEAD 实际指向一致也无危。
+  if (ref) {
+    const branch = await git.currentBranch({ fs, dir, gitdir, fullname: false }).catch(() => undefined)
+    if (!branch) {
+      // 游离态：比对 HEAD 实际 commit 与待推 ref 的 commit，不一致就拦下。
+      const headOid = await git.resolveRef({ fs, dir, gitdir, ref: 'HEAD' }).catch(() => undefined)
+      const refOid = await git.resolveRef({ fs, dir, gitdir, ref }).catch(() => undefined)
+      if (headOid && refOid && headOid !== refOid) {
+        throw new Error(
+          `HEAD 处于游离态（detached HEAD @ ${headOid.slice(0, 8)}），与分支 '${ref}' @ ${refOid.slice(0, 8)} 不一致。` +
+          `直接 push 会推送分支旧值（丢失游离 HEAD 上的新提交）。` +
+          `请先将分支指向当前 HEAD（或 checkout 到分支后重新提交）。`
+        )
+      }
+    }
+  }
+
   const result = await git.push({
     fs, dir, gitdir,
     http,
