@@ -4,7 +4,7 @@ description: Download public audio or video that the user is authorized to save 
 runtime: node
 entry: scripts/main.ts
 metadata:
-  display_name: "媒体下载"
+  display_name: "Media Download"
   intent_patterns: "download video, download audio, download YouTube video, download X video, save public media, 下载视频, 下载音频, 下载 YouTube 视频, 下载媒体"
   required_tools: "run_shell_command"
   input_schema_file: "schema.json"

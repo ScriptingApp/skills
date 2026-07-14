@@ -11,6 +11,7 @@ A collection of skills designed for the **Scripting app** AI agent. These skills
 | [rich-maps](./rich-maps) | Render rich, interactive MapKit UIs for markers, navigation, traffic, nearby places, itineraries, route comparison, exploration, and trip planning. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Frich-maps%22%5D) |
 | [rich-charts](./rich-charts) | Render rich, interactive SwiftUI Charts from structured data, including bar, line, pie, donut, area, and scatter charts. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Frich-charts%22%5D) |
 | [grounding-with-exa-search](./grounding-with-exa-search) | Ground answers with up-to-date web information via Exa Search, returning real-time multilingual results with verifiable source URLs. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fgrounding-with-exa-search%22%5D) |
+| [media-download](./media-download) | Download public, authorized web audio or video with yt-dlp, then verify and finalize local media through FFmpeg/ffprobe. Supports safe MP4/MKV fallback and inline video playback. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fmedia-download%22%5D) |
 | [telegram-bot](./telegram-bot) | Send messages to Telegram groups or users via Bot API. Configure bot token and chat ID securely, then send text messages, photos, and manage messages. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Ftelegram-bot%22%5D) |
 
 ## Importing Skills
@@ -26,6 +27,7 @@ Use the `scripting.fun` service link. This is the recommended shareable link for
 - [Import rich-maps](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Frich-maps%22%5D)
 - [Import rich-charts](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Frich-charts%22%5D)
 - [Import grounding-with-exa-search](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fgrounding-with-exa-search%22%5D)
+- [Import media-download](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fmedia-download%22%5D)
 - [Import telegram-bot](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Ftelegram-bot%22%5D)
 
 ### Method 2: URL Scheme
@@ -37,6 +39,7 @@ Use the `scripting://` URL scheme to import directly from the Scripting app:
 - [Import rich-maps](scripting://import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Frich-maps%22%5D)
 - [Import rich-charts](scripting://import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Frich-charts%22%5D)
 - [Import grounding-with-exa-search](scripting://import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fgrounding-with-exa-search%22%5D)
+- [Import media-download](scripting://import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fmedia-download%22%5D)
 - [Import telegram-bot](scripting://import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Ftelegram-bot%22%5D)
 
 ### Generate Import Links
