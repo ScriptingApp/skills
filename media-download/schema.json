@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["urls", "outputDir"],
+  "properties": {
+    "urls": {"type": "array", "minItems": 1, "maxItems": 10, "items": {"type": "string", "format": "uri"}, "description": "Public HTTP(S) media-page URLs that the user is authorized to save."},
+    "outputDir": {"type": "string", "description": "Absolute destination directory under the current workspace. The runtime canonicalizes and rejects any path outside that workspace."},
+    "quality": {"type": "string", "enum": ["best", "1080p", "720p", "audio"], "default": "best"},
+    "container": {"type": "string", "enum": ["auto", "mp4", "mkv", "original"], "default": "auto", "description": "auto: stream-copy MP4 then optional MKV fallback; mp4: stream-copy then H.264/AAC transcode only if needed; mkv: stream-copy MKV; original: keep verified original tracks."},
+    "allowFallback": {"type": "boolean", "default": true, "description": "Only affects container=auto: allow lossless MKV fallback when MP4 stream copy fails."},
+    "keepRawFiles": {"type": "boolean", "default": false, "description": "Keep acquired raw tracks only after a verified final result is atomically published."}
+  }
+}
