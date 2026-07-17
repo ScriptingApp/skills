@@ -101,7 +101,7 @@
 - 剩余风险：预览工具仅证明组件可加载，不构成像素级截图验收；JSON 公共合同只支持字符串类别轴，不支持日期轴或 `unit`。
 
 ## Resume / Handoff
-- 当前状态：修复、验证、三轮对抗审查和 Spec 回写已完成；待将 iCloud skill 安全同步到 App Group skills git workdir 并审查提交。
+- 当前状态：修复、验证、三轮对抗审查、Spec 回写与 skills git 提交均已完成（`2a090d065cad975914a15844ddd29c95ba6dc5bb`）。
 - 当前卡点：无代码阻断；真实设备/截图级视觉验收为非阻断后续项。
-- 下一步唯一动作：同步 rich-charts 到 skills git workdir，审查 diff 并提交。
-- 下一轮核心目标：确保仓库中可追溯地保存已验证的 rich-charts 修复。
+- 下一步唯一动作：如需发布，单独确认后推送 skills `main`。
+- 下一轮核心目标：在真实设备上完成可视化验收，或按需推送已验证提交。
