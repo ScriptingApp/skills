@@ -105,3 +105,41 @@
 - 当前卡点：无代码阻断；真实设备/截图级视觉验收为非阻断后续项。
 - 下一步唯一动作：如需发布，单独确认后推送 skills `main`。
 - 下一轮核心目标：在真实设备上完成可视化验收，或按需推送已验证提交。
+
+## Follow-up: Multi-Series Line Color Repair (2026-07-18)
+
+### Restated Understanding
+- 截图已证实：用户提供的无 `id`、同标签三系列 Line JSON 能加载，但 sibling `<LineChart>` 的静态 `foregroundStyle` 在运行时被统一渲染为灰蓝色；图例的灰 / 橙 / 粉色则正确。此前“独立 LineChart 即颜色正确”的验证结论不成立。
+- 本轮核心目标：将多系列 Line 改为一个按稳定内部系列 key 分组的 `LineCategoryChart`，使曲线路径独立、颜色与显式图例一一一致；单系列 Line 与其它图表语义不变。
+
+### Done Contract
+- 以用户的 WHO / 宝宝三系列样例（无 `id`、相同 label、指定 `#7A869A` / `#F5A623` / `#E85D75`）截图验收：三条折线各自可见，分别使用上述颜色，且与图例一致、无串线。
+- 多系列 mark 仅使用 `foregroundStyleBy`，并以与 `category` 相同的稳定 key 配置 `chartForegroundStyleScale`；不得与静态 `foregroundStyle` 混用。
+- 全 skill TypeScript diagnostics 为 0；API probe 与回归页均能加载；完成一次针对 identity、空系列、同名/无 id、重排序和跨线的对抗性审查。
+
+### Approved Implementation Plan
+1. 保持调用方 `series.id`（若存在）作为身份；缺失时生成 `series-${index}`。该 key 是内部渲染/分组/图例 key，不使用可重复的 `name`。
+2. 在 `line-chart.tsx` 将多系列路径改为单个 `LineCategoryChart`：展平 marks，写入 `category` 与 `foregroundStyleBy`，在同一 `Chart` 上通过 `chartForegroundStyleScale` 绑定 key 到颜色。
+3. 加入包含用户体重样例的视觉回归 fixture，并将 API probe 扩展到 `LineCategoryChart + foregroundStyleBy + chartForegroundStyleScale`。
+4. 运行诊断、预览和截图；依证据回写本 Spec，并同步到 skills git worktree。是否 push 仍需单独批准。
+
+### Checkpoint
+- Execution Approval: `Approved`（用户于 2026-07-18 明确回复“批准，开始改”）。
+- 风险：`name` 允许重复，不能用于 category/style scale key；若 scale key 与 mark category 不同会导致颜色回退。默认色应在一次渲染中与 legend 共用同一映射。
+- 验证：全量 TS diagnostics + API probe/回归页加载 + 用户样例截图像素级目视检查 + 对抗性 review。
+
+### Change Log (Follow-up)
+- 2026-07-18: 用户明确批准后，Line 多系列从多个 sibling `<LineChart>` 改为单一 `LineCategoryChart`。每个 mark 的 `category` 与 `foregroundStyleBy.value` 均使用同一内部 series key；`Chart.chartForegroundStyleScale` 将该 key 显式映射至该系列色；自动图例以 `chartLegend="hidden"` 关闭，自定义命名图例保留。
+- 2026-07-18: `normalizeSeries` 现在保留显式 `series.id`，无 id 时生成回退 key；并避免调用方显式 id 与回退 key（如 `series-1`）碰撞。
+- 2026-07-18: 新增用户 WHO / 宝宝三系列无 id 视觉回归 fixture，并扩展 Charts API probe 覆盖 `LineCategoryChart + foregroundStyleBy + chartForegroundStyleScale`。
+
+### Validation (Follow-up)
+- Static: `get_typescript_diagnostics(skill_name="rich-charts")` 为 **0 errors**。
+- Runtime: `scripting-ts preview_ui scripts/charts-api-probe.tsx` 与 `scripts/chart-test.tsx` 均成功加载。
+- Screenshot: 使用用户给出的 WHO / 宝宝三系列样例渲染截图。三条独立曲线可见并与自定义图例逐一匹配：中位数为灰蓝 `#7A869A`、+2SD 为橙 `#F5A623`、宝宝实测为粉 `#E85D75`；无系统 `series-0/1/2` 自动图例、无跨系列连线。
+- Boundary screenshot: 显式 `id: "series-1"` 与另一条无 id 系列仍生成两条独立灰/粉曲线与正确图例，证明回退 key 冲突已规避。
+- Adversarial review: 通过，无阻断问题。检查了稳定 key、空系列、无 id、重复展示名、重复 id、`foregroundStyle` 互斥、系统图例隐藏、路径串线与 fixture 覆盖。后续非阻断增强可加入空系列/重复 name/错误态 fixture。
+- 核心目标是否由证据证明完成：**是**。此前截图证实的多系列 Line 颜色失配已由新截图直接证伪。
+
+### Resume / Handoff (Follow-up)
+- 当前状态：折线颜色修复、截图验收与对抗性审查完成；下一步为同步到 skills git worktree 并提交，不推送。

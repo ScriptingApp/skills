@@ -1,6 +1,7 @@
 import {
   BarChart,
   Chart,
+  LineCategoryChart,
   LineChart,
   AreaChart,
   PointChart,
@@ -28,9 +29,11 @@ export default function ChartsApiProbe() {
   return (
     <VStack spacing={16}>
       <Text>Charts API probe</Text>
-      <Chart frame={{ height: 180 }}>
-        <LineChart marks={seriesA.map(point => ({ ...point, foregroundStyle: blueStyle, interpolationMethod: "linear" as const, symbol: "circle" as const }))} />
-        <LineChart marks={seriesB.map(point => ({ ...point, foregroundStyle: pinkStyle, interpolationMethod: "linear" as const, symbol: "square" as const }))} />
+      <Chart frame={{ height: 180 }} chartForegroundStyleScale={{ median: blueStyle, upper: pinkStyle }}>
+        <LineCategoryChart marks={[
+          ...seriesA.map(point => ({ ...point, category: "median", foregroundStyleBy: { value: "median", label: "Series" }, interpolationMethod: "linear" as const })),
+          ...seriesB.map(point => ({ ...point, category: "upper", foregroundStyleBy: { value: "upper", label: "Series" }, interpolationMethod: "linear" as const })),
+        ]} />
       </Chart>
       <Chart frame={{ height: 180 }}>
         <AreaChart marks={seriesA.map(point => ({ ...point, foregroundStyle: blueStyle, interpolationMethod: "linear" as const }))} />

@@ -127,7 +127,7 @@ Output a `scripting-file` block with the data:
 
 - Supports light/dark mode automatically
 - Colors accept Scripting `Color` formats: keyword, hex, rgb/rgba, or hsl/hsla.
-- `series.id` is optional but, when supplied, must be non-empty and unique. Series colors are fixed and accompanied by an explicit legend; duplicate display names are allowed.
-- Multi-series `line` and `area` render independent series paths. `area` uses non-stacked overlay semantics; `bar` renders grouped bars (and respects `labelOnYAxis`).
+- `series.id` is optional but, when supplied, must be non-empty and unique. It is the stable internal grouping/color key; `name` is display-only and may repeat. Without an `id`, the renderer assigns a per-input-order key. Series colors are bound to those keys and accompanied by an explicit legend.
+- Multi-series `line` uses a single category-grouped renderer with a fixed series-key color scale, so every path is independent and its color matches the explicit legend. Multi-series `area` renders independent non-stacked overlays; `bar` renders grouped bars (and respects `labelOnYAxis`).
 - Empty datasets show `暂无数据`; invalid JSON config (including `data` + `series`, duplicated ids, or invalid donut radii) shows a configuration error.
 - For large datasets (50+ points), prefer line chart over bar chart

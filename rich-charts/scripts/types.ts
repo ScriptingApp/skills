@@ -47,7 +47,7 @@ export interface ScatterPoint {
 }
 
 export interface SeriesData {
-  /** Optional caller identity. It must be non-empty and unique in ChartRenderer configs; direct component rendering uses array-order keys. */
+  /** Optional caller identity. It must be non-empty and unique in ChartRenderer configs; when absent, ChartRenderer assigns `series-${index}` as a stable per-render grouping and color key. */
   id?: string
   /** Displayed in the legend; it is not used as a grouping key. */
   name: string

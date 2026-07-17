@@ -27,6 +27,17 @@ const multiLineChartConfig: ChartConfig = {
   options: { interpolationMethod: "linear", showSymbols: true, symbol: "circle" },
 }
 
+/** Screenshot regression: no ids, identical labels, and three distinct requested colors. */
+const whoWeightLineChartConfig: ChartConfig = {
+  type: "line",
+  title: "体重对比：WHO 女童标准 vs 宝宝记录",
+  series: [
+    { name: "WHO 中位数（kg）", color: "#7A869A", data: [{ label: "出生\n0天", value: 3.2 }, { label: "13天", value: 3.9 }, { label: "21天", value: 4.3 }, { label: "23天", value: 4.4 }, { label: "42天", value: 5.0 }] },
+    { name: "WHO +2SD 上限（kg）", color: "#F5A623", data: [{ label: "出生\n0天", value: 4.2 }, { label: "13天", value: 5.0 }, { label: "21天", value: 5.5 }, { label: "23天", value: 5.6 }, { label: "42天", value: 6.3 }] },
+    { name: "宝宝实测（kg）", color: "#E85D75", data: [{ label: "出生\n0天", value: 3.25 }, { label: "13天", value: 4.0 }, { label: "21天", value: 4.7 }, { label: "23天", value: 4.6 }, { label: "42天", value: 6.0 }] },
+  ],
+}
+
 const multiAreaChartConfig: ChartConfig = {
   type: "area",
   title: "容量趋势（非堆叠 overlay）",
@@ -62,6 +73,7 @@ export default function ChartTestPage() {
         <ChartRenderer config={horizontalBarChartConfig} height={250} />
         <Divider />
         <ChartRenderer config={multiLineChartConfig} height={250} />
+        <ChartRenderer config={whoWeightLineChartConfig} height={300} />
         <Divider />
         <ChartRenderer config={multiAreaChartConfig} height={250} />
         <Divider />

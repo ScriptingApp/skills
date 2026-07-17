@@ -1,8 +1,8 @@
-import { Chart, LineChart, VStack, Text } from "scripting"
+import { Chart, LineCategoryChart, LineChart, VStack, Text } from "scripting"
 import { ChartTitle, SeriesLegend } from "./chart-ui"
 import { LineChartProps, chartStyle, seriesColor } from "./types"
 
-/** A line chart. Each non-empty series becomes a separate LineChart mark to prevent cross-series paths. */
+/** A line chart. Multi-series marks are grouped by a stable internal key so paths and style-scale colors remain independent. */
 export function LineChartView({
   title,
   height,
@@ -16,30 +16,34 @@ export function LineChartView({
   const nonEmptySeries = series?.filter(item => item.data.length > 0) ?? []
 
   if (nonEmptySeries.length > 0) {
-    const legendItems = nonEmptySeries.map((item, index) => ({
-      key: `series-${index}`,
-      name: item.name,
+    const renderedSeries = nonEmptySeries.map((item, index) => ({
+      ...item,
+      key: item.id ?? `series-${index}`,
       color: seriesColor(item.color, index),
     }))
+    const legendItems = renderedSeries.map(item => ({
+      key: item.key,
+      name: item.name,
+      color: item.color,
+    }))
+    const chartForegroundStyleScale = Object.fromEntries(
+      renderedSeries.map(item => [item.key, chartStyle(item.color)]),
+    )
+    const marks = renderedSeries.flatMap(item => item.data.map(point => ({
+      category: item.key,
+      label: point.label,
+      value: point.value,
+      unit: point.unit,
+      foregroundStyleBy: { value: item.key, label: "系列" },
+      interpolationMethod,
+      symbol: showSymbols ? symbol : undefined,
+    })))
 
     return (
       <VStack spacing={8}>
         <ChartTitle title={title} />
-        <Chart frame={{ height }}>
-          {nonEmptySeries.map((item, index) => (
-            <LineChart
-              key={`series-${index}`}
-              labelOnYAxis={labelOnYAxis}
-              marks={item.data.map(point => ({
-                label: point.label,
-                value: point.value,
-                unit: point.unit,
-                foregroundStyle: chartStyle(seriesColor(item.color, index)),
-                interpolationMethod,
-                symbol: showSymbols ? symbol : undefined,
-              }))}
-            />
-          ))}
+        <Chart frame={{ height }} chartLegend="hidden" chartForegroundStyleScale={chartForegroundStyleScale}>
+          <LineCategoryChart labelOnYAxis={labelOnYAxis} marks={marks} />
         </Chart>
         <SeriesLegend items={legendItems} />
       </VStack>

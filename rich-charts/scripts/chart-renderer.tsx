@@ -34,15 +34,25 @@ function normalizeSeries(config: UnknownRecord, kind: "label" | "point"): string
   if (series === undefined) return undefined
   if (!Array.isArray(series)) return "series 必须是数组"
   const ids = new Set<string>()
-  const normalized: UnknownRecord[] = []
-  for (let index = 0; index < series.length; index += 1) {
-    const item = series[index]
+  for (const item of series) {
     if (!isRecord(item) || typeof item.name !== "string" || item.name.trim().length === 0 || !hasDataPoints(item.data, kind)) return "每个 series 必须包含非空 name 和有效 data 数组"
     if (item.id !== undefined && (typeof item.id !== "string" || item.id.trim().length === 0)) return "series.id 必须是非空字符串"
-    const sourceId = typeof item.id === "string" ? item.id : `series-${index}`
-    if (ids.has(sourceId)) return `series.id 重复：${sourceId}`
+    if (typeof item.id === "string") {
+      if (ids.has(item.id)) return `series.id 重复：${item.id}`
+      ids.add(item.id)
+    }
+  }
+  const normalized: UnknownRecord[] = []
+  for (let index = 0; index < series.length; index += 1) {
+    const item = series[index] as UnknownRecord
+    let sourceId = typeof item.id === "string" ? item.id : `series-${index}`
+    let suffix = 1
+    while (ids.has(sourceId) && item.id === undefined) {
+      sourceId = `series-${index}-${suffix}`
+      suffix += 1
+    }
     ids.add(sourceId)
-    normalized.push({ ...item, id: `series-${index}` })
+    normalized.push({ ...item, id: sourceId })
   }
   config.series = normalized
   return undefined
