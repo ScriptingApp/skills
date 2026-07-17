@@ -60,6 +60,8 @@ Output a `scripting-file` block with the data:
 }
 ```
 
+- `data`（单系列）与 `series`（多系列）互斥；不要同时提供。JSON props 使用字符串类别轴，不支持日期轴或 `unit`。
+
 ## Multi-Series (Bar/Line/Area)
 ```json
 {
@@ -67,6 +69,7 @@ Output a `scripting-file` block with the data:
   "title": "趋势对比",
   "series": [
     {
+      "id": "series-a",
       "name": "系列A",
       "data": [
         { "label": "1月", "value": 100 },
@@ -75,6 +78,7 @@ Output a `scripting-file` block with the data:
       "color": "#4A90D9"
     },
     {
+      "id": "series-b",
       "name": "系列B",
       "data": [
         { "label": "1月", "value": 80 },
@@ -122,5 +126,8 @@ Output a `scripting-file` block with the data:
 # Notes
 
 - Supports light/dark mode automatically
-- Colors are optional, default palette will be used
+- Colors accept Scripting `Color` formats: keyword, hex, rgb/rgba, or hsl/hsla.
+- `series.id` is optional but, when supplied, must be non-empty and unique. Series colors are fixed and accompanied by an explicit legend; duplicate display names are allowed.
+- Multi-series `line` and `area` render independent series paths. `area` uses non-stacked overlay semantics; `bar` renders grouped bars (and respects `labelOnYAxis`).
+- Empty datasets show `暂无数据`; invalid JSON config (including `data` + `series`, duplicated ids, or invalid donut radii) shows a configuration error.
 - For large datasets (50+ points), prefer line chart over bar chart

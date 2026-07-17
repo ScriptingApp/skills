@@ -1,10 +1,8 @@
 import { Chart, LineChart, VStack, Text } from "scripting"
-import { LineChartProps, DataPoint, SeriesData } from "./types"
+import { ChartTitle, SeriesLegend } from "./chart-ui"
+import { LineChartProps, chartStyle, seriesColor } from "./types"
 
-/**
- * 折线图组件
- * 支持单系列和多系列数据
- */
+/** A line chart. Each non-empty series becomes a separate LineChart mark to prevent cross-series paths. */
 export function LineChartView({
   title,
   height,
@@ -15,17 +13,43 @@ export function LineChartView({
   showSymbols = true,
   symbol = "circle",
 }: LineChartProps) {
-  
-  const defaultColors = [
-    "#4A90D9", "#E85D75", "#50C878", "#FFB347", 
-    "#9B59B6", "#1ABC9C", "#F39C12", "#E74C3C"
-  ]
+  const nonEmptySeries = series?.filter(item => item.data.length > 0) ?? []
 
-  // 单系列模式
-  if (data && !series) {
+  if (nonEmptySeries.length > 0) {
+    const legendItems = nonEmptySeries.map((item, index) => ({
+      key: `series-${index}`,
+      name: item.name,
+      color: seriesColor(item.color, index),
+    }))
+
     return (
       <VStack spacing={8}>
-        {title && <Text font="headline">{title}</Text>}
+        <ChartTitle title={title} />
+        <Chart frame={{ height }}>
+          {nonEmptySeries.map((item, index) => (
+            <LineChart
+              key={`series-${index}`}
+              labelOnYAxis={labelOnYAxis}
+              marks={item.data.map(point => ({
+                label: point.label,
+                value: point.value,
+                unit: point.unit,
+                foregroundStyle: chartStyle(seriesColor(item.color, index)),
+                interpolationMethod,
+                symbol: showSymbols ? symbol : undefined,
+              }))}
+            />
+          ))}
+        </Chart>
+        <SeriesLegend items={legendItems} />
+      </VStack>
+    )
+  }
+
+  if (data && data.length > 0) {
+    return (
+      <VStack spacing={8}>
+        <ChartTitle title={title} />
         <Chart frame={{ height }}>
           <LineChart
             labelOnYAxis={labelOnYAxis}
@@ -33,7 +57,7 @@ export function LineChartView({
               label: point.label,
               value: point.value,
               unit: point.unit,
-              foregroundStyle: defaultColors[0],
+              foregroundStyle: chartStyle(seriesColor(undefined, 0)),
               interpolationMethod,
               symbol: showSymbols ? symbol : undefined,
             }))}
@@ -43,48 +67,9 @@ export function LineChartView({
     )
   }
 
-  // 多系列模式
-  if (series && series.length > 0) {
-    const allMarks: Array<{
-      label: string | Date;
-      value: number;
-      series: string;
-      foregroundStyle: string;
-      interpolationMethod: string;
-      symbol?: string;
-    }> = []
-
-    series.forEach((s, index) => {
-      const seriesColor = s.color || defaultColors[index % defaultColors.length]
-      s.data.forEach(point => {
-        allMarks.push({
-          label: point.label,
-          value: point.value,
-          series: s.name,
-          foregroundStyle: seriesColor,
-          interpolationMethod,
-          symbol: showSymbols ? symbol : undefined,
-        })
-      })
-    })
-
-    return (
-      <VStack spacing={8}>
-        {title && <Text font="headline">{title}</Text>}
-        <Chart frame={{ height }}>
-          <LineChart
-            labelOnYAxis={labelOnYAxis}
-            marks={allMarks}
-          />
-        </Chart>
-      </VStack>
-    )
-  }
-
-  // 无数据
   return (
     <VStack spacing={8}>
-      {title && <Text font="headline">{title}</Text>}
+      <ChartTitle title={title} />
       <Text foregroundStyle="secondaryLabel">暂无数据</Text>
     </VStack>
   )

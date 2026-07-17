@@ -1,39 +1,22 @@
-import { Chart, Bar1DChart, VStack, Text } from "scripting"
-import { Bar1DChartProps, CategoryDataPoint } from "./types"
+import { Bar1DChart, Chart, VStack, Text } from "scripting"
+import { ChartTitle } from "./chart-ui"
+import { Bar1DChartProps, chartStyle, seriesColor } from "./types"
 
-/**
- * 一维柱状图组件
- * 简单的柱状图，适合排名展示
- */
-export function Bar1DChartView({
-  title,
-  height,
-  data,
-  labelOnYAxis = false,
-  colors,
-}: Bar1DChartProps) {
-  
-  const defaultColors = [
-    "#4A90D9", "#E85D75", "#50C878", "#FFB347", 
-    "#9B59B6", "#1ABC9C", "#F39C12", "#E74C3C"
-  ]
-
-  const chartColors = colors || defaultColors
-
-  // 构建 marks 数据
-  const marks = data.map((item, index) => ({
-    category: item.category,
-    value: item.value,
-    foregroundStyle: chartColors[index % chartColors.length],
-  }))
-
+/** One-dimensional category bar chart for ranking-style data. */
+export function Bar1DChartView({ title, height, data, labelOnYAxis = false, colors }: Bar1DChartProps) {
+  if (data.length === 0) return <VStack spacing={8}><ChartTitle title={title} /><Text foregroundStyle="secondaryLabel">暂无数据</Text></VStack>
+  const chartColors = colors?.length ? colors : undefined
   return (
     <VStack spacing={8}>
-      {title && <Text font="headline">{title}</Text>}
+      <ChartTitle title={title} />
       <Chart frame={{ height }}>
         <Bar1DChart
           labelOnYAxis={labelOnYAxis}
-          marks={marks}
+          marks={data.map((item, index) => ({
+            category: item.category,
+            value: item.value,
+            foregroundStyle: chartStyle(chartColors?.[index % chartColors.length] ?? seriesColor(undefined, index)),
+          }))}
         />
       </Chart>
     </VStack>

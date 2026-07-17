@@ -1,10 +1,8 @@
 import { Chart, PointChart, VStack, Text } from "scripting"
-import { PointChartProps, ScatterPoint } from "./types"
+import { ChartTitle, SeriesLegend } from "./chart-ui"
+import { PointChartProps, chartStyle, seriesColor } from "./types"
 
-/**
- * 散点图组件
- * 支持单系列和多系列数据
- */
+/** Scatter chart with independent chart marks per series; coincident points retain their true coordinates. */
 export function PointChartView({
   title,
   height,
@@ -13,72 +11,46 @@ export function PointChartView({
   symbolSize = 8,
   symbol = "circle",
 }: PointChartProps) {
-  
-  const defaultColors = [
-    "#4A90D9", "#E85D75", "#50C878", "#FFB347", 
-    "#9B59B6", "#1ABC9C", "#F39C12", "#E74C3C"
-  ]
+  const nonEmptySeries = series?.filter(item => item.data.length > 0) ?? []
 
-  // 单系列模式
-  if (data && !series) {
+  if (nonEmptySeries.length > 0) {
+    const legendItems = nonEmptySeries.map((item, index) => ({
+      key: `series-${index}`,
+      name: item.name,
+      color: seriesColor(item.color, index),
+    }))
     return (
       <VStack spacing={8}>
-        {title && <Text font="headline">{title}</Text>}
+        <ChartTitle title={title} />
         <Chart frame={{ height }}>
-          <PointChart
-            marks={data.map(point => ({
-              x: point.x,
-              y: point.y,
-              foregroundStyle: defaultColors[0],
-              symbol,
-              symbolSize,
-            }))}
-          />
+          {nonEmptySeries.map((item, index) => (
+            <PointChart
+              key={`series-${index}`}
+              marks={item.data.map(point => ({
+                x: point.x,
+                y: point.y,
+                foregroundStyle: chartStyle(seriesColor(item.color, index)),
+                symbol,
+                symbolSize,
+              }))}
+            />
+          ))}
+        </Chart>
+        <SeriesLegend items={legendItems} />
+      </VStack>
+    )
+  }
+
+  if (data && data.length > 0) {
+    return (
+      <VStack spacing={8}>
+        <ChartTitle title={title} />
+        <Chart frame={{ height }}>
+          <PointChart marks={data.map(point => ({ x: point.x, y: point.y, foregroundStyle: chartStyle(seriesColor(undefined, 0)), symbol, symbolSize }))} />
         </Chart>
       </VStack>
     )
   }
 
-  // 多系列模式
-  if (series && series.length > 0) {
-    const allMarks: Array<{
-      x: number;
-      y: number;
-      series: string;
-      foregroundStyle: string;
-      symbol: string;
-      symbolSize: number;
-    }> = []
-
-    series.forEach((s, index) => {
-      const seriesColor = s.color || defaultColors[index % defaultColors.length]
-      s.data.forEach(point => {
-        allMarks.push({
-          x: point.x,
-          y: point.y,
-          series: s.name,
-          foregroundStyle: seriesColor,
-          symbol,
-          symbolSize,
-        })
-      })
-    })
-
-    return (
-      <VStack spacing={8}>
-        {title && <Text font="headline">{title}</Text>}
-        <Chart frame={{ height }}>
-          <PointChart marks={allMarks} />
-        </Chart>
-      </VStack>
-    )
-  }
-
-  // 无数据
-  return (
-    <VStack spacing={8}>
-      {title && <Text font="headline">{title}</Text>}
-      <Text foregroundStyle="secondaryLabel">暂无数据</Text>
-    </VStack>
-  )
+  return <VStack spacing={8}><ChartTitle title={title} /><Text foregroundStyle="secondaryLabel">暂无数据</Text></VStack>
 }
