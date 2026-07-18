@@ -1,187 +1,110 @@
 ---
 name: telegram-bot
-description: Send messages to Telegram groups or users via Bot API. Configure bot token and chat ID, then send text messages with optional formatting.
+description: Read Bot updates and manage Telegram group/channel messages via Bot API. Supports raw update retrieval, channel checks, sending, editing and deleting messages.
 runtime: node
 entry: scripts/tg-bot.ts
 metadata:
   display_name: "Telegram Bot"
-  intent_patterns: "telegram, telegram bot, send telegram message, telegram notification, tg bot, tg message"
+  intent_patterns: "telegram, telegram bot, send telegram message, telegram notification, tg bot, tg message, read telegram messages"
   required_tools: "run_shell_command"
   input_schema_file: "schema.json"
 ---
 
 # Purpose
 
-Send messages to Telegram groups or users using the Telegram Bot API. This skill provides a complete solution for configuring bot credentials and sending messages programmatically.
+Use Telegram Bot API through one parameterized command entry. Bot credentials and the configured default chat are stored securely in Keychain; never pass or print tokens.
 
-**Key features:**
-- 🔐 Secure storage of bot token and chat ID in Keychain
-- 📱 Multi-language support (Chinese/English)
-- 📨 Send text messages with Markdown/HTML formatting
-- 🔍 Test bot connection and configuration
-- 📋 List all known chats and select target
-- 👥 Get chat info, member count, administrators
-- ✏️ Edit, delete, pin/unpin messages
-- 🖼️ Send photos with captions
+## Supported commands
 
-## Supported Operations
+| Command | Purpose |
+|---|---|
+| `updates` | Read raw Bot updates, including `text_link`, `entities`, captions and channel posts. Sensitive-looking credentials in message text/URL parameters are redacted in output. |
+| `chat-check` | Check access to a numeric chat ID or public `@group` / `@channel` and return safe machine-readable chat details. |
+| `list-chats` | Human-readable list of chats observed in unconfirmed Bot updates. |
+| `chat-info` / `member-count` / `admins` | Human-readable chat management queries. |
+| `send` / `send-photo` | Send text or image to default chat, numeric ID, or `@channel_username`. |
+| `edit` / `delete` / `pin` / `unpin` | Manage messages. Bots normally edit their own messages. |
+| `test` / `config` / `status` / `help` | Connection and configuration helpers. |
 
-### Chat Management
-| Operation | Description |
-|-----------|-------------|
-| `list-chats` | List all known chats from bot updates |
-| `chat-info` | Get detailed chat information |
-| `member-count` | Get chat member count |
-| `admins` | List chat administrators |
+## Core examples
 
-### Message Operations
-| Operation | Description |
-|-----------|-------------|
-| `send` | Send a text message |
-| `send-photo` | Send a photo with optional caption |
-| `edit` | Edit an existing message |
-| `delete` | Delete a message |
-| `pin` | Pin a message in chat |
-| `unpin` | Unpin a message |
+All calls use:
 
-### System
-| Operation | Description |
-|-----------|-------------|
-| `test` | Test bot connection |
-| `config` | Open configuration page |
-| `status` | Show current config status |
-| `help` | Show all commands |
-
-# Instructions
-
-## 1. Configure the bot
-
-First-time setup or update credentials:
-
-```bash
-scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '{"command":"config"}' --timeout 120
-```
-
-## 2. List all known chats
-
-```bash
-scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '{"command":"list-chats"}' --timeout 30
-```
-
-## 3. Get chat info
-
-```bash
-scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '{"command":"chat-info", "chat_id":"-1001234567890"}' --timeout 30
-```
-
-## 4. Send a message
-
-```bash
-# Send to default chat
-scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '{"command":"send", "text":"Hello!"}' --timeout 30
-
-# Send to specific chat
-scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '{"command":"send", "chat_id":"-1001234567890", "text":"Hello!"}' --timeout 30
-
-# Send with Markdown formatting
-scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '{"command":"send", "text":"**Bold** and _italic_", "parse_mode":"Markdown"}' --timeout 30
-```
-
-### Newline escaping in `--queryparameters`
-
-When passing multi-line text through `scripting-ts --queryparameters`, write newlines with **double escaping** at the shell-command level.
-
-- If you pass `\n` in the command string, `Script.queryParameters.text` may receive plain `n` (the backslash is lost before the script sees it).
-- To make the script receive real newline characters, pass `\\n` in the command string. When this command is itself embedded inside a JSON tool call, that usually means writing `\\\\n` in the outer JSON string.
-
-Example multi-line message:
-
-```bash
-scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '{"command":"send", "text":"Line 1\\n\\nLine 3"}' --timeout 30
-```
-
-Expected text received by the script:
-
-```text
-Line 1
-
-Line 3
-```
-
-For long or complex messages, prefer writing a temporary script that constructs the string internally, or use a Node `.cjs` helper with `process.argv` + `JSON.parse`, which preserves JSON `\n` correctly.
-
-## 5. Send a photo
-
-```bash
-scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '{"command":"send-photo", "photo":"https://example.com/image.jpg", "caption":"Photo description"}' --timeout 30
-```
-
-## 6. Edit a message
-
-```bash
-scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '{"command":"edit", "chat_id":"-1001234567890", "message_id":123, "text":"Updated text"}' --timeout 30
-```
-
-## 7. Delete a message
-
-```bash
-scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '{"command":"delete", "chat_id":"-1001234567890", "message_id":123}' --timeout 30
-```
-
-## 8. Pin/unpin a message
-
-```bash
-# Pin
-scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '{"command":"pin", "chat_id":"-1001234567890", "message_id":123}' --timeout 30
-
-# Unpin
-scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '{"command":"unpin", "chat_id":"-1001234567890"}' --timeout 30
-```
-
-# Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `command` | string | ✅ | Command to execute |
-| `chat_id` | string | optional | Target chat ID (uses default if not specified) |
-| `text` | string | for send/edit | Message text |
-| `photo` | string | for send-photo | Photo URL |
-| `caption` | string | for send-photo | Photo caption |
-| `message_id` | number | for edit/delete/pin/unpin | Message ID |
-| `parse_mode` | string | optional | `Markdown`, `MarkdownV2`, or `HTML` |
-| `disable_notification` | boolean | optional | Send silently (default: false) |
-
-# Setup Guide
-
-## Creating a Telegram Bot
-
-1. Open Telegram and search for **@BotFather**
-2. Send `/newbot` command
-3. Follow the prompts to set bot name and username
-4. Copy the **HTTP API Token** provided by BotFather
-
-## Getting Chat ID
-
-### For groups:
-1. Add your bot to the group
-2. Send a message in the group
-3. Use `list-chats` command to see all known chats
-4. Or call `getUpdates` API: `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
-
-### For private chats:
-1. Send a message to your bot
-2. Use `list-chats` command
-
-## Important Notes
-
-- **Privacy Mode**: Disable privacy mode in BotFather (`/setprivacy` → Disabled) if you want the bot to receive all group messages
-- **Rate Limits**: Telegram limits bots to ~20 messages per minute per group
-- **Permissions**: Bot must be added to the group with appropriate permissions
-
-# Available Tools
-
-## run_shell_command
-Execute the TypeScript script with parameters:
 ```bash
 scripting-ts run <skill_dir>/scripts/tg-bot.ts --queryparameters '<JSON>' --timeout <seconds>
 ```
+
+### 1. Read raw updates safely
+
+```bash
+scripting-ts run <skill_dir>/scripts/tg-bot.ts \
+  --queryparameters '{"command":"updates","limit":100,"allowed_updates":["message","channel_post"]}' \
+  --timeout 60
+```
+
+The command outputs structured JSON and preserves Telegram message entities such as `text_link`, so links hidden behind labels like “点击安装” remain available.
+
+> **Important — `offset` confirms updates:** omit `offset` for safe read-only retrieval. Passing `offset=N` tells Telegram to discard all prior updates. Use it only after messages have been safely archived and processed, and avoid multiple consumers / webhooks using the same Bot update queue.
+
+```bash
+# Destructive acknowledgement / pagination cursor; use only deliberately.
+scripting-ts run <skill_dir>/scripts/tg-bot.ts \
+  --queryparameters '{"command":"updates","offset":123456790,"limit":100}' \
+  --timeout 60
+```
+
+### 2. Check a channel before posting
+
+```bash
+scripting-ts run <skill_dir>/scripts/tg-bot.ts \
+  --queryparameters '{"command":"chat-check","chat_id":"@scripting_app"}' \
+  --timeout 30
+```
+
+### 3. Send to a channel
+
+```bash
+scripting-ts run <skill_dir>/scripts/tg-bot.ts \
+  --queryparameters '{"command":"send","chat_id":"@scripting_app","text":"今天没有版本更新"}' \
+  --timeout 30
+```
+
+For channels, add the Bot as an administrator and grant **Post Messages**. Grant **Edit Messages** if you want to correct Bot-posted content, and **Delete Messages** only when deletion is required.
+
+### 4. Edit or delete a Bot message
+
+```bash
+# Edit
+scripting-ts run <skill_dir>/scripts/tg-bot.ts \
+  --queryparameters '{"command":"edit","chat_id":"@scripting_app","message_id":518,"text":"更新后的内容"}' \
+  --timeout 30
+
+# Delete
+scripting-ts run <skill_dir>/scripts/tg-bot.ts \
+  --queryparameters '{"command":"delete","chat_id":"@scripting_app","message_id":518}' \
+  --timeout 30
+```
+
+## Parameters
+
+| Parameter | Type | Applies to | Description |
+|---|---|---|---|
+| `command` | string | all | Operation name. |
+| `chat_id` | string | chat/message commands | Numeric ID such as `-100…`, or public `@group` / `@channel` username. |
+| `text` | string | `send`, `edit` | Message body. |
+| `photo` / `caption` | string | `send-photo` | Image URL and optional caption. |
+| `message_id` | number | `edit`, `delete`, `pin`, `unpin` | Telegram message ID. |
+| `parse_mode` | string | send/edit/photo | `Markdown`, `MarkdownV2`, or `HTML`. |
+| `disable_notification` | boolean | send/photo | Send silently. |
+| `offset` | number | `updates` | **Acknowledgement cursor**; dangerous unless intentional. |
+| `limit` | number | `updates` | 1–100 updates per request. |
+| `timeout` | number | `updates` | Long-polling seconds, 0–50. |
+| `allowed_updates` | string array | `updates` | Update types, e.g. `["message","channel_post"]`. |
+
+## Setup notes
+
+1. Create a Bot with `@BotFather`; configure token/default chat with `{"command":"config"}`.
+2. To receive ordinary group messages, disable privacy mode: BotFather → `/setprivacy` → select Bot → `Disable`.
+3. Bot API reads messages **received after the Bot is added/configured**, not arbitrary historical chat content.
+4. Do not log, copy, republish, or include tokens, API keys, passwords, or other credentials that may appear in group messages.
+5. Telegram applies per-chat rate limits; combine summaries instead of sending many messages.

@@ -3,65 +3,24 @@
   "properties": {
     "command": {
       "type": "string",
-      "enum": [
-        "list-chats",
-        "chat-info",
-        "member-count",
-        "admins",
-        "send",
-        "send-photo",
-        "edit",
-        "delete",
-        "pin",
-        "unpin",
-        "test",
-        "config",
-        "status",
-        "help"
-      ],
-      "description": "Command to execute"
+      "enum": ["updates", "chat-check", "list-chats", "chat-info", "member-count", "admins", "send", "send-photo", "edit", "delete", "pin", "unpin", "test", "config", "status", "help"],
+      "description": "Telegram Bot operation"
     },
     "chat_id": {
       "type": "string",
-      "description": "Target chat ID (optional, uses default if not specified)"
+      "description": "Numeric chat ID (e.g. -100...) or public @group/@channel username. Uses configured default only where supported."
     },
-    "text": {
-      "type": "string",
-      "description": "Message text (required for send and edit commands)"
-    },
-    "photo": {
-      "type": "string",
-      "description": "Photo URL (required for send-photo command)"
-    },
-    "caption": {
-      "type": "string",
-      "description": "Photo caption (optional for send-photo command)"
-    },
-    "message_id": {
-      "type": "number",
-      "description": "Message ID (required for edit, delete, pin, unpin commands)"
-    },
-    "parse_mode": {
-      "type": "string",
-      "enum": ["Markdown", "MarkdownV2", "HTML"],
-      "description": "Message formatting mode"
-    },
-    "disable_notification": {
-      "type": "boolean",
-      "description": "Send message silently (default: false)"
-    },
-    "disable_notification_pin": {
-      "type": "boolean",
-      "description": "Pin message silently (default: false)"
-    }
+    "text": { "type": "string", "description": "Message text for send/edit" },
+    "photo": { "type": "string", "description": "Photo URL for send-photo" },
+    "caption": { "type": "string", "description": "Optional photo caption" },
+    "message_id": { "type": "number", "description": "Telegram message ID for edit/delete/pin/unpin" },
+    "parse_mode": { "type": "string", "enum": ["Markdown", "MarkdownV2", "HTML"], "description": "Message formatting mode" },
+    "disable_notification": { "type": "boolean", "description": "Send silently" },
+    "disable_notification_pin": { "type": "boolean", "description": "Pin silently" },
+    "offset": { "type": "integer", "minimum": 0, "description": "updates acknowledgement cursor. Supplying it confirms and discards all earlier updates; omit for safe read-only retrieval." },
+    "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "Maximum updates returned by updates" },
+    "timeout": { "type": "integer", "minimum": 0, "maximum": 50, "description": "Long-polling timeout in seconds for updates" },
+    "allowed_updates": { "type": "array", "items": { "type": "string" }, "description": "Optional update type allowlist, e.g. [\"message\",\"channel_post\"]" }
   },
-  "required": ["command"],
-  "if": {
-    "properties": {
-      "command": { "const": "send" }
-    }
-  },
-  "then": {
-    "required": ["text"]
-  }
+  "required": ["command"]
 }

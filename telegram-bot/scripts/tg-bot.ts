@@ -24,6 +24,11 @@ interface TgCommand {
   message_id?: number
   // 置顶
   disable_notification_pin?: boolean
+  // 读取更新（offset 是确认游标，默认不传）
+  offset?: number
+  limit?: number
+  timeout?: number
+  allowed_updates?: string[]
 }
 
 interface TgResponse {
@@ -229,8 +234,17 @@ async function getMe(token: string): Promise<TgResponse> {
 /**
  * 获取更新
  */
-async function getUpdates(token: string): Promise<TgResponse> {
-  return callTgApi(token, "getUpdates", {})
+async function getUpdates(
+  token: string,
+  options: { offset?: number; limit?: number; timeout?: number; allowed_updates?: string[] } = {}
+): Promise<TgResponse> {
+  const body: any = {}
+  // 警告：Telegram 会确认并丢弃 offset 之前的更新，因此默认绝不传 offset。
+  if (options.offset !== undefined) body.offset = options.offset
+  if (options.limit !== undefined) body.limit = Math.max(1, Math.min(100, options.limit))
+  if (options.timeout !== undefined) body.timeout = Math.max(0, Math.min(50, options.timeout))
+  if (options.allowed_updates?.length) body.allowed_updates = options.allowed_updates
+  return callTgApi(token, "getUpdates", body)
 }
 
 /**
@@ -303,6 +317,42 @@ async function getChatList(token: string): Promise<ChatInfo[]> {
   return Array.from(chatMap.values())
 }
 
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(/((?:api[_ -]?key|token|secret|password)\s*[:=]\s*)([^\s]+)/gi, "$1[REDACTED]")
+    .replace(/\b\d{6,12}:[A-Za-z0-9_-]{20,}\b/g, "[REDACTED_BOT_TOKEN]")
+}
+
+/** Preserve update structure/entities while preventing accidental secret disclosure in command output. */
+function redactUrl(value: string): string {
+  try {
+    const url = new URL(value)
+    for (const key of ["token", "api_key", "apikey", "key", "secret", "password", "access_token"]) {
+      if (url.searchParams.has(key)) url.searchParams.set(key, "[REDACTED]")
+    }
+    return url.toString()
+  } catch {
+    return redactSensitiveText(value)
+  }
+}
+
+function redactUpdates(updates: any[]): any[] {
+  return updates.map(update => {
+    const copy = JSON.parse(JSON.stringify(update))
+    for (const key of ["message", "channel_post", "edited_message", "edited_channel_post"]) {
+      const message = copy[key]
+      if (typeof message?.text === "string") message.text = redactSensitiveText(message.text)
+      if (typeof message?.caption === "string") message.caption = redactSensitiveText(message.caption)
+      for (const entityKey of ["entities", "caption_entities"]) {
+        for (const entity of message?.[entityKey] || []) {
+          if (typeof entity.url === "string") entity.url = redactUrl(entity.url)
+        }
+      }
+    }
+    return copy
+  })
+}
+
 // === 主要命令处理 ===
 
 async function handleCommand(cmd: TgCommand): Promise<void> {
@@ -329,6 +379,35 @@ async function handleCommand(cmd: TgCommand): Promise<void> {
   const targetChatId = cmd.chat_id || chatId
   
   switch (cmd.command) {
+    // ==================== 原始更新读取 ====================
+    case "updates": {
+      const result = await getUpdates(token, { offset: cmd.offset, limit: cmd.limit, timeout: cmd.timeout, allowed_updates: cmd.allowed_updates })
+      if (!result.ok) {
+        console.log(JSON.stringify({ ok: false, error_code: result.error_code, description: result.description }))
+        return
+      }
+      const updates = redactUpdates(result.result || [])
+      console.log(JSON.stringify({ ok: true, update_count: updates.length, result: updates }, null, 2))
+      break
+    }
+
+    // ==================== 机器可读 Chat 检查 ====================
+    case "chat-check": {
+      if (!cmd.chat_id) {
+        console.log(JSON.stringify({ ok: false, description: "Missing chat_id" }))
+        return
+      }
+      const result = await getChat(token, cmd.chat_id)
+      if (!result.ok) {
+        console.log(JSON.stringify({ ok: false, error_code: result.error_code, description: result.description }))
+        return
+      }
+      const chat = result.result || {}
+      // Only return identifiers useful for routing; omit invite links, file IDs and other incidental data.
+      console.log(JSON.stringify({ ok: true, result: { id: chat.id, type: chat.type, title: chat.title || chat.first_name, username: chat.username, description: chat.description } }, null, 2))
+      break
+    }
+
     // ==================== 群组列表 ====================
     case "list-chats": {
       console.log(isZh ? "📋 获取群组列表中..." : "📋 Getting chat list...")
@@ -660,6 +739,8 @@ async function handleCommand(cmd: TgCommand): Promise<void> {
       console.log(isZh ? "\n📖 Telegram Bot 命令帮助：\n" : "\n📖 Telegram Bot Commands:\n")
       console.log("─".repeat(50))
       console.log(isZh ? "📋 群组管理：" : "📋 Chat Management:")
+      console.log("  updates       - " + (isZh ? "读取原始更新（保留 text_link 等实体）" : "Read raw updates (preserves entities)"))
+      console.log("  chat-check    - " + (isZh ? "检查 ID 或 @频道访问（JSON）" : "Check ID or @channel access (JSON)"))
       console.log("  list-chats    - " + (isZh ? "列出所有已知群组" : "List all known chats"))
       console.log("  chat-info     - " + (isZh ? "获取群组详细信息" : "Get chat details"))
       console.log("  member-count  - " + (isZh ? "获取群组成员数量" : "Get member count"))
@@ -680,7 +761,10 @@ async function handleCommand(cmd: TgCommand): Promise<void> {
       console.log("  help          - " + (isZh ? "显示帮助" : "Show help"))
       console.log("─".repeat(50))
       console.log(isZh ? "\n💡 参数说明：" : "\n💡 Parameters:")
-      console.log("  chat_id       - " + (isZh ? "指定群组 ID（可选）" : "Target chat ID (optional)"))
+      console.log("  chat_id       - " + (isZh ? "数字 ID 或公开 @群组/@频道用户名（可选）" : "Numeric ID or public @group/@channel username (optional)"))
+      console.log("  offset        - " + (isZh ? "updates 确认游标；传入将丢弃此前更新，谨慎使用" : "updates acknowledgement cursor; discards earlier updates"))
+      console.log("  limit         - " + (isZh ? "updates 单次数量（1-100）" : "updates page size (1-100)"))
+      console.log("  allowed_updates - " + (isZh ? "JSON 数组，例如 [\"message\",\"channel_post\"]" : "JSON array, e.g. [\"message\",\"channel_post\"]"))
       console.log("  text          - " + (isZh ? "消息内容" : "Message text"))
       console.log("  photo         - " + (isZh ? "图片 URL" : "Photo URL"))
       console.log("  caption       - " + (isZh ? "图片说明" : "Photo caption"))
@@ -701,6 +785,16 @@ async function handleCommand(cmd: TgCommand): Promise<void> {
 
 // === 入口 ===
 
+function parseAllowedUpdates(value?: string): string[] | undefined {
+  if (!value) return undefined
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) && parsed.every(item => typeof item === "string") ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
 async function main() {
   const queryParams = Script.queryParameters as Record<string, string>
   const params: TgCommand = {
@@ -712,7 +806,11 @@ async function main() {
     message_id: queryParams.message_id ? parseInt(queryParams.message_id) : undefined,
     parse_mode: queryParams.parse_mode as any,
     disable_notification: queryParams.disable_notification === "true",
-    disable_notification_pin: queryParams.disable_notification_pin === "true"
+    disable_notification_pin: queryParams.disable_notification_pin === "true",
+    offset: queryParams.offset ? parseInt(queryParams.offset) : undefined,
+    limit: queryParams.limit ? parseInt(queryParams.limit) : undefined,
+    timeout: queryParams.timeout ? parseInt(queryParams.timeout) : undefined,
+    allowed_updates: parseAllowedUpdates(queryParams.allowed_updates)
   }
   
   if (!params.command) {
