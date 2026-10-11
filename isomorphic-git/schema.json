@@ -4,12 +4,20 @@
   "properties": {
     "command": {
       "type": "string",
-      "enum": ["init", "add", "rm", "commit", "log", "status", "branch", "checkout", "diff", "restore", "stash", "revert", "remote", "push", "pull", "clone", "tag", "list", "remove"],
+      "enum": ["init", "add", "rm", "commit", "log", "status", "branch", "checkout", "diff", "restore", "stash", "revert", "remote", "push", "pull", "clone", "tag", "list", "remove", "inspect", "recover", "prune"],
       "description": "Git command to execute"
     },
+    "snapshotId": { "type": "string", "description": "recover: exact pending snapshot id from inspect." },
+    "action": { "type": "string", "enum": ["restore-old", "keep-current"], "description": "recover action; never automatic." },
+    "expectedCurrentHash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "recover: SHA256 from fresh inspect, mutually exclusive with expectedMissing:true." },
+    "expectedMissing": { "type": "boolean", "description": "recover: explicit confirmation target is absent; mutually exclusive with hash." },
+    "snapshotIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true, "description": "prune: exact eligible completed ids. Never pending/resolved/newest8." },
+    "confirm": { "type": "boolean", "description": "prune writes only with true plus nonempty snapshotIds; otherwise preview." },
+    "transactionId": {"type":"string","description":"Required for explicit revert apply/cancel/recover; use ID and fresh currentDigest from inspect scope=revert. Normal revert needs ref+author."},
+    "scope": { "type": "string", "enum": ["index", "map", "revert"], "description": "Required explicit scope: revert only readonly inspect; index/map inspect/recover/prune. map needs no dir; other scopes need existing mapping." },
     "dir": {
       "type": "string",
-      "description": "Absolute path to the project (workdir) directory. Required for all commands except 'list'."
+      "description": "Absolute path to the project (workdir) directory. Required for all commands except 'list' and inspect/recover/prune with scope map."
     },
     "name": {
       "type": "string",
@@ -102,11 +110,18 @@
     "maxFiles": {
       "type": "integer",
       "minimum": 0,
-      "description": "Working-tree diff guard. Max paths to scan before returning a truncated warning. Only applies to diff without refA/refB; can also guard directory filepath subtree diffs. Use 0 to disable. Default: 5000."
+      "description": "Add candidate-file budget or diff scan guard. Default 5000; 0 disables. Ref and working-tree diff both honor this guard."
     },
+    "maxEntries": { "type": "integer", "minimum": 0, "description": "Add scan/index entry budget; default 20000, 0 disables." },
+    "maxFileBytes": { "type": "integer", "minimum": 0, "description": "Add single-file byte budget; default 33554432, 0 disables." },
+    "maxTotalBytes": { "type": "integer", "minimum": 0, "description": "Add total candidate byte budget; default 268435456, 0 disables." },
+    "maxTransferBytes": { "type": "integer", "minimum": 0, "description": "Per HTTP body budget; default 67108864, 0 disables. Native responses are buffered before post-read validation when Content-Length is absent." },
+    "timeoutMs": { "type": "integer", "minimum": 0, "description": "Cooperative deadline in milliseconds; 0 disables. Not a hard interruption or transaction rollback." },
+    "dryRun": { "type": "boolean", "description": "Add preflight without staging; revert readonly inverse planning only; normal apply requires explicit author and supported regular files." },
+    "includeStats": { "type": "boolean", "description": "Include operation statistics in output." },
     "summaryOnly": {
       "type": "boolean",
-      "description": "For working-tree diff, return status counts without the full change list."
+      "description": "For diff, return status counts without the full change list."
     }
   },
   "additionalProperties": false

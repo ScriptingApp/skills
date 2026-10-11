@@ -6,6 +6,7 @@
 
 import { Script } from "scripting"
 import { loadBufferPolyfill } from "../polyfills"
+import { loadGit } from "../git-loader"
 import { createFS } from "../fs-adapter"
 import { workingTreeDiffWithGuard } from "../diff-utils"
 
@@ -23,21 +24,6 @@ function assert(condition: boolean, message: string) {
   testCount++
   if (condition) { passCount++; console.log(`  ✅ ${message}`) }
   else { failCount++; console.log(`  ❌ ${message}`) }
-}
-
-async function loadGit(): Promise<any> {
-  const bundlePath = SKILL_DIR + "/vendor/index.umd.min.js"
-  const bundleCode = await FileManager.readAsString(bundlePath, 'utf8')
-  const wrappedCode = "(function() {\n" +
-    "var self = typeof self !== 'undefined' ? self : (typeof globalThis !== 'undefined' ? globalThis : {});\n" +
-    "var module = { exports: {} };\n" +
-    "var exports = module.exports;\n" +
-    bundleCode + "\n" +
-    "return module.exports;\n" +
-    "})()"
-  const git = eval(wrappedCode)
-  if (!git || typeof git.init !== 'function') throw new Error("加载 isomorphic-git 失败")
-  return git
 }
 
 async function resetProject() {

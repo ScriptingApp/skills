@@ -1,0 +1,7 @@
+import { Script } from 'scripting'
+import { loadBufferPolyfill } from '../polyfills'
+import { loadGit } from '../git-loader'
+import { createFS } from '../fs-adapter'
+import { createOperationContext } from '../operation-context'
+import { workingTreeDiffWithGuard } from '../diff-utils'
+async function main(){const root=FileManager.temporaryDirectory+'/git-matrix-'+Date.now();let result:any;try{await loadBufferPolyfill();const git=await loadGit();const dir=root+'/work',gitdir=root+'/git';await FileManager.createDirectory(dir,true);const op=createOperationContext();const fs=createFS(gitdir,dir,{operation:op.operation});await git.init({fs,dir,gitdir});await fs.writeFile(dir+'/a.txt','a');await fs.writeFile(dir+'/b.txt','b');const full=await workingTreeDiffWithGuard({git,fs,dir,gitdir});const summary=await workingTreeDiffWithGuard({git,fs,dir,gitdir,summaryOnly:true});if(full.changes.length!==2||summary.changes!==undefined||JSON.stringify(full.summary)!==JSON.stringify(summary.summary))throw new Error('stream summary mismatch');const limited=await workingTreeDiffWithGuard({git,fs,dir,gitdir,maxFiles:1});if(!limited.truncated||!limited.incomplete)throw new Error('limit contract');const nested=await workingTreeDiffWithGuard({git,fs,dir,gitdir,filepath:'a.txt'});if(nested.changes.length!==1||nested.changes[0].filepath!=='a.txt')throw new Error('subpath mismatch');result={ok:true,passed:4,full,summary,limited};op.close()}catch(e:any){result={ok:false,error:e.message}}finally{await FileManager.remove(root).catch(()=>{})}Script.exit(result)}main()

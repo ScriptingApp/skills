@@ -43,7 +43,7 @@ async function runTests() {
     assert(typeof ensureAuth === 'function', "auth 导出 ensureAuth")
     assert(typeof AUTH_CANCELLED_ERROR === 'string' && AUTH_CANCELLED_ERROR.length > 0, "auth 导出 AUTH_CANCELLED_ERROR")
 
-    const gitTs = await FileManager.readAsString(SKILL_DIR + "/scripts/git.ts", 'utf8')
+    const gitTs = await FileManager.readAsString(SKILL_DIR + "/scripts/git-dispatcher.ts", 'utf8')
     assert(gitTs.includes('from "./commands"'), "git.ts 从 commands.ts 导入命令")
     assert(gitTs.includes('from "./remote-commands"'), "git.ts 从 remote-commands.ts 导入远程命令")
     assert(gitTs.includes('from "./repo-map"'), "git.ts 从 repo-map.ts 导入 repo helper")

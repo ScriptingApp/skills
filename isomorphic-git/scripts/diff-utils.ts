@@ -39,10 +39,21 @@ export async function workingTreeDiffWithGuard(options: WorkingTreeDiffOptions):
   const effectiveMaxFiles = maxFiles === 0 ? 0 : (maxFiles || 5000)
   let scanned = 0
   const limitErrorPrefix = '__ISOGIT_STATUS_MATRIX_LIMIT__:'
+  const changes: Array<{ filepath: string; status: string }> = []
+  const summary: Record<string, number> = {}
+  const consume = (row: any[]) => {
+    if (row[1] === 1 && row[2] === 1 && row[3] === 1) return
+    const status = matrixToStatus(row[1], row[2], row[3])
+    summary[status] = (summary[status] || 0) + 1
+    if (!summaryOnly) changes.push({ filepath: row[0], status })
+  }
   let matrix: any[][]
   try {
     matrix = await git.statusMatrix({
       fs, dir, gitdir,
+      retainRows: false,
+      onRow: consume,
+      filepaths: filepath ? [filepath] : ['.'],
       filter: (fp: string) => {
         if (fp === '.') return true
         if (filepath && fp !== filepath && !fp.startsWith(filepath + '/')) return false
@@ -59,6 +70,7 @@ export async function workingTreeDiffWithGuard(options: WorkingTreeDiffOptions):
         changes: [],
         summary: {},
         truncated: true,
+        incomplete: true,
         scanned,
         maxFiles: effectiveMaxFiles,
         warning: `Working-tree diff aborted after scanning more than ${effectiveMaxFiles} paths. Pass a narrower filepath, raise maxFiles, or set maxFiles:0 to disable this guard.`,
@@ -67,17 +79,9 @@ export async function workingTreeDiffWithGuard(options: WorkingTreeDiffOptions):
     throw e
   }
 
-  const changes: Array<{ filepath: string; status: string }> = []
-  const summary: Record<string, number> = {}
-  for (const row of matrix) {
-    const fp = row[0] as string
-    const head = row[1] as number
-    const work = row[2] as number
-    const stage = row[3] as number
-    if (head === 1 && work === 1 && stage === 1) continue // unmodified
-    const status = matrixToStatus(head, work, stage)
-    summary[status] = (summary[status] || 0) + 1
-    if (!summaryOnly) changes.push({ filepath: fp, status })
-  }
-  return { changes: summaryOnly ? undefined : changes, summary, scanned, truncated: false }
+  // All production rows are consumed through the validated vendor extension.
+  // Older/mock vendors that return rows remain compatible without duplicates.
+  if (matrix.length && !Object.keys(summary).length) for (const row of matrix) consume(row)
+  fs.assertHealthy?.()
+  return { changes: summaryOnly ? undefined : changes, summary, scanned, truncated: false, incomplete: false }
 }

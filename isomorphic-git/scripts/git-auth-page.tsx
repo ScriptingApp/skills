@@ -25,11 +25,11 @@ const i18n = {
   cancel:          isZh ? "取消" : "Cancel",
 }
 
-function GitAuthPage() {
+function GitAuthPage({ reason }: {reason?:'invalid-token'}) {
   const dismiss = Navigation.useDismiss()
   // 从 Keychain 读取已存值作为默认值（编辑而非重输）
   const usernameObs = useObservable(() => Keychain.get(KC_USERNAME_KEY) ?? "")
-  const tokenObs = useObservable(() => Keychain.get(KC_TOKEN_KEY) ?? "")
+  const tokenObs = useObservable(() => reason ? '' : Keychain.get(KC_TOKEN_KEY) ?? '')
 
   const handleSave = () => {
     const u = usernameObs.value.trim() || "x-access-token"
@@ -49,6 +49,7 @@ function GitAuthPage() {
           cancellationAction: <Button title={i18n.cancel} action={() => dismiss()} />
         }}
       >
+        {reason ? <Section><Text>{isZh ? 'GitHub 已拒绝原 Token（401）。Token 可能已过期、被撤销或填写错误，请重新填写并保存以继续。' : 'GitHub rejected the previous token (401). It may be expired, revoked or incorrect. Enter a new token and save to continue.'}</Text></Section> : null}
         <Section
           header={<Text>{i18n.sectionHeader}</Text>}
           footer={<Text>{i18n.footer}</Text>}
@@ -76,8 +77,8 @@ function GitAuthPage() {
  * 弹出认证配置页面，让用户输入凭据
  * @returns { username, token } 或 null（用户取消）
  */
-export async function promptForAuth(): Promise<{ username: string; token: string } | null> {
-  const result = await Navigation.present<{ username: string; token: string }>(<GitAuthPage />)
+export async function promptForAuth(reason?:'invalid-token'): Promise<{ username: string; token: string } | null> {
+  const result = await Navigation.present<{ username: string; token: string }>(<GitAuthPage reason={reason} />)
   if (!result || !result.username || !result.token) {
     return null
   }

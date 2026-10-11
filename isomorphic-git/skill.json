@@ -4,7 +4,7 @@
   "input_schema_file" : "schema.json",
   "remoteResource" : {
     "autoUpdateInterval" : 21600,
-    "hash" : "7f4a74af71943bb481f22ab8e7d73145",
+    "hash" : "2fea4bfd677d7cd78648078b6a18e928",
     "url" : "https:\/\/github.com\/ScriptingApp\/skills\/tree\/main\/isomorphic-git"
   }
 }

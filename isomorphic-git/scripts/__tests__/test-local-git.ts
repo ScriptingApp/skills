@@ -7,6 +7,7 @@
 
 import { Script } from "scripting"
 import { loadBufferPolyfill } from "../polyfills"
+import { loadGit } from "../git-loader"
 import { createFS } from "../fs-adapter"
 
 declare const Buffer: any
@@ -15,7 +16,6 @@ declare const Buffer: any
 // 不注入全局 Buffer —— 让 isomorphic-git UMD bundle 使用其内部打包的 Buffer
 
 // === 路径配置 ===
-const SKILL_DIR = FileManager.scriptsDirectory + "/../scripting-skills/isomorphic-git"
 const GIT_REPOS_DIR = FileManager.appGroupDocumentsDirectory + "/git-repos"
 const TEST_PROJECT_DIR = FileManager.appGroupDocumentsDirectory + "/test-git-project"
 const TEST_REPO_NAME = "test-project"
@@ -57,36 +57,6 @@ class ReadableBytes extends Uint8Array {
     if (e <= s) return new ReadableBytes(0)
     return new ReadableBytes(this.buffer, this.byteOffset + s, e - s)
   }
-}
-
-// === 加载 isomorphic-git UMD bundle ===
-async function loadGit(): Promise<any> {
-  const bundlePath = SKILL_DIR + "/vendor/index.umd.min.js"
-  
-  if (!await FileManager.exists(bundlePath)) {
-    throw new Error("isomorphic-git bundle 未找到: " + bundlePath)
-  }
-
-  const bundleCode = await FileManager.readAsString(bundlePath, 'utf8')
-  
-  // UMD bundle 在 CommonJS 环境中使用 module.exports
-  // 需要提供 self（UMD 用 self 作为全局对象参数）
-  const wrappedCode = "(function() {\n" +
-    "var self = typeof self !== 'undefined' ? self : (typeof globalThis !== 'undefined' ? globalThis : {});\n" +
-    "var module = { exports: {} };\n" +
-    "var exports = module.exports;\n" +
-    bundleCode + "\n" +
-    "return module.exports;\n" +
-    "})()"
-  
-  const git = eval(wrappedCode)
-  
-  if (!git || typeof git.init !== 'function') {
-    throw new Error("加载 isomorphic-git 失败")
-  }
-  
-  console.log("✅ isomorphic-git 加载成功，版本:", git.version?.() || 'unknown')
-  return git
 }
 
 // === 测试 ===

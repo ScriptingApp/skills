@@ -7,6 +7,11 @@ export const AUTH_CANCELLED_ERROR = isZh ? "认证信息未配置，操作已取
 const KC_USERNAME_KEY = "isomorphic_git_username"
 const KC_TOKEN_KEY = "isomorphic_git_token"
 
+export async function reauthenticateStoredAuth():Promise<{username:string;password:string}|null>{
+  const result=await promptForAuth('invalid-token')
+  return result?{username:result.username,password:result.token}:null
+}
+
 async function getStoredAuth(): Promise<{ username: string; token: string } | null> {
   const username = Keychain.get(KC_USERNAME_KEY)
   const token = Keychain.get(KC_TOKEN_KEY)

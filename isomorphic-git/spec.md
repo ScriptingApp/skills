@@ -1,4 +1,5 @@
-# isomorphic-git Skill 改造方案
+# 历史说明：本文件是早期改造方案，内容保留不迁移、不改写。当前性能调查与实施真相源请以 [specs/2026-10-11_14-45_git-performance.md](specs/2026-10-11_14-45_git-performance.md) 为准。
+
 
 ## 1. 核心目标
 

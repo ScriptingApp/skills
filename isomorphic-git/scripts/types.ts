@@ -10,6 +10,14 @@ export interface GitAuth {
 
 export interface GitCommand {
   command: string
+  snapshotId?: string
+  action?: 'restore-old' | 'keep-current'
+  expectedCurrentHash?: string
+  expectedMissing?: boolean
+  snapshotIds?: string[]
+  confirm?: boolean
+  transactionId?: string
+  scope?: 'index' | 'map' | 'revert'
   dir?: string
   name?: string
   filepath?: string
@@ -33,4 +41,11 @@ export interface GitCommand {
   auth?: GitAuth
   maxFiles?: number
   summaryOnly?: boolean
+  maxEntries?: number
+  maxFileBytes?: number
+  maxTotalBytes?: number
+  maxTransferBytes?: number
+  timeoutMs?: number
+  dryRun?: boolean
+  includeStats?: boolean
 }
