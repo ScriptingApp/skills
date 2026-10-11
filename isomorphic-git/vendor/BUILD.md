@@ -2,7 +2,7 @@
 
 Only `index.umd.min.js` is loaded by production (`scripts/git-loader.ts`). The filename is retained for compatibility; this is a generated readable module-registry UMD, not hand-edited minified code.
 
-Production SHA-256: `c052d99200f2d7c6eb014e4d32b7c94deabf390a77403873339df6fc3664bc05`.
+Production SHA-256: `87d298693858677a327a6156a818a6a057201db6c5f73bad73da22bbadc7de11`.
 
 ## Extensions
 
@@ -28,3 +28,4 @@ Base package: npm isomorphic-git 1.38.1 (MIT). Base readable index.js SHA-256 re
 
 ## 2026-10-11 pkt parser anti-spin guard
 SHA256 c6dfaea136bd308aca606c109cbf19a9ea8388e62736e7f8e87c396d930ef9e2 (prior c052d99200f2d7c6eb014e4d32b7c94deabf390a77403873339df6fc3664bc05). Canonical source strict hex/length/short payload guards and StreamReader safe read/skip length; every32pktreads yields. Offline242module build/rebuild-inputs updated. Bounded extracted parser6 passed, real remote fixture paused/not accepted; do not reuse old hash runtime evidence as current artifact acceptance.
+n## 2026-10-12 EOF regression correctionnCurrent SHA256: 87d298693858677a327a6156a818a6a057201db6c5f73bad73da22bbadc7de11. Treat zero-byte StreamReader return as normal EOF, retain partial-header/hex/range/payload guards. Invalid header diagnostics show only four-byte hex. Actual native-Buffer StreamReader/GitPktLine regression:12 passed; isolated live GitHub depth1 noCheckout clone succeeded at31bfeffe, cleanup true. Full worktree clone still to be verified.n
