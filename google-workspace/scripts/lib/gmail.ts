@@ -213,6 +213,6 @@ export async function createDraft(args: Json) {
   const body = String(args.body || "")
   if (!to || !subject) throw new Error("gmail_draft_requires_to_and_subject")
   const lines = [`To: ${to}`, cc ? `Cc: ${cc}` : null, bcc ? `Bcc: ${bcc}` : null, `Subject: ${subject}`, "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "", body].filter(Boolean)
-  const data = await gmailFetch("/drafts", { method: "POST", body: JSON.stringify({ message: { raw: base64UrlEncodeUtf8(lines.join("\r\n")) } })
+  const data = await gmailFetch("/drafts", { method: "POST", body: JSON.stringify({ message: { raw: base64UrlEncodeUtf8(lines.join("\r\n")) } }) })
   return { id: data.id, messageId: data.message?.id || null, threadId: data.message?.threadId || null }
 }
