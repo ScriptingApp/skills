@@ -9,7 +9,8 @@ Click **Import** to open the skill directly in Scripting.
 | Skill | Description | Install |
 |---|---|---|
 | [design-scripting-custom-gradient-background](./design-scripting-custom-gradient-background) | Add reusable custom gradient backgrounds to Scripting pages, with light and dark color schemes, configurable directions, persistence, and readability checks. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fdesign-scripting-custom-gradient-background%22%5D) |
-| [grounding-with-exa-search](./grounding-with-exa-search) | Ground answers with up-to-date web information via Exa Search, with multilingual results and verifiable source URLs. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fgrounding-with-exa-search%22%5D) |
+| [gmail-api](./gmail-api) | Call Gmail REST API directly from Scripting Runtime with Keychain OAuth, supporting labels, search, messages, threads, and draft creation. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fgmail-api%22%5D) |
+| [grounding-with-exa-search](./grounding-with-exa-search) | Ground answers with up-to-date web information via Exa Search, with multilingual and verifiable source URLs. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fgrounding-with-exa-search%22%5D) |
 | [isomorphic-git](./isomorphic-git) | Run Git version control entirely on iOS: init, commit, branch, diff, stash, push, pull, clone, tag, and more. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fisomorphic-git%22%5D) |
 | [media-download](./media-download) | Download authorized public audio or video, verify the result, and return a finalized local media file with inline playback. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fmedia-download%22%5D) |
 | [rich-charts](./rich-charts) | Render interactive SwiftUI Charts from structured data, including bar, line, pie, donut, area, and scatter charts. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Frich-charts%22%5D) |
@@ -23,27 +24,12 @@ A skill is defined by its `SKILL.md`. Depending on its purpose, it may also incl
 
 ```text
 skill-name/
-├── SKILL.md          # Required documentation and metadata
-├── skill.json        # Optional package metadata
-├── schema.json       # Optional input schema
-├── scripts/          # Optional TypeScript/TSX sources
-└── vendor/           # Optional third-party libraries
+├── SKILL.md
+├── skill.json
+├── schema.json
+├── scripts/
+└── vendor/
 ```
-
-### SKILL.md Front Matter
-
-```yaml
----
-name: skill-name
-description: Brief description of what this skill does
-metadata:
-  display_name: "Display Name"
-  intent_patterns: "keywords, for, matching"
-  required_tools: "run_shell_command"
----
-```
-
-Executable skills can additionally declare `runtime` and `entry` fields.
 
 ## License
 
