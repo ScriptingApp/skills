@@ -9,7 +9,11 @@ function validateDir(dir: string) {
   if (typeof dir !== 'string' || !dir.startsWith('/') || dir.includes('\0') || dir.split('/').includes('..')) fail('INVALID_PROJECT_PATH', 'Expected an absolute project path without traversal')
 }
 function validateName(name: string) {
-  if (typeof name !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(name)) fail('INVALID_REPOSITORY_NAME', 'Use letters, digits, underscore or dash for repository name')
+  // Project folder names commonly contain spaces (for example, "Daily Money").
+  // Git stores these names in the App Group git-repos directory, so spaces are
+  // safe; reject only path separators, traversal, control characters, and
+  // empty/unsupported punctuation.
+  if (typeof name !== 'string' || !/^[a-zA-Z0-9 _-]+$/.test(name) || name.trim().length === 0 || name.includes('..')) fail('INVALID_REPOSITORY_NAME', 'Use letters, digits, spaces, underscore or dash for repository name')
 }
 export function validateRepoMapContent(text:string): RepoMap {
   let value:any
