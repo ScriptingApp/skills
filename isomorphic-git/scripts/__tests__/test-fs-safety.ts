@@ -40,17 +40,24 @@ async function main():Promise<void> {
     await unlimited.writeFile('refs/head',new Uint8Array([1,2,3])); assert((await unlimited.readFile('refs/head')).length===3,'git internal route failed')
     await expectCode(()=>unlimited.readFile('../escape'),'ENOENT'); await expectCode(()=>unlimited.readFile('missing'),'ENOENT'); await expectCode(()=>unlimited.readFile('missing'),'ENOENT')
 
+    // Git's clone metadata cleanup may remove shallow/deepen files that are
+    // already absent. Deletion must be idempotent, but real type errors must
+    // still propagate.
+    await unlimited.unlink('missing-unlink'); await unlimited.rmdir('missing-rmdir')
+    await unlimited.mkdir('unlink-directory'); await expectCode(()=>unlimited.unlink('unlink-directory'),'EISDIR'); assert(await unlimited.exists('unlink-directory'),'unlink removed directory')
+
     const fm=createFS(gitdir,workdir,{backend:'file-manager'}); assert(fm.backend==='file-manager','file-manager backend not selected')
     const fmView=new Uint8Array([7,8,9,10]).subarray(1,3); await fm.writeFile('fallback-offset.bin',fmView)
     const fmBytes=await fm.readFileBuffer('fallback-offset.bin'); assert(fmBytes.length===2&&fmBytes[0]===8&&fmBytes[1]===9,'FileManager offset bytes mismatch')
     const fmStat=await fm.stat('fallback-offset.bin'); assert(fmStat.isFile()===true&&fmStat.isDirectory()===false,'FileManager stat predicates mismatch')
     await fm.mkdir('fallback-dir'); await expectCode(()=>fm.unlink('fallback-dir'),'EISDIR'); assert(await fm.exists('fallback-dir'),'unlink removed directory')
+    await fm.unlink('fallback-missing-unlink'); await fm.rmdir('fallback-missing-rmdir')
     let fmMissingCode:any=null,fmMissingMessage=''; try { await fm.readFile('fallback-missing') } catch(e:any) { fmMissingCode=e&&e.code; fmMissingMessage=String(e&&e.message||e) }
 
     const leakContext=createOperationContext({budget:{maxOpenFiles:0}}),leakFs=createFS(gitdir,workdir,{backend:'promises',operation:leakContext.operation})
     await expectCode(()=>leakFs.readFile('leak-check'),'EMFILE'); assert(leakContext.stats.openFiles===0,'operation enter leaked openFiles'); leakContext.close()
     const stats=context.close()
-    result={ok:true,backend:defaultFs.backend,physical,hits,fmMissingErrno:fmMissingCode||null,fmMissingMessage,stats,assertions:['default-backend','write-budget-no-write','offset-bytes','ignore-refresh','object-cache-preserved','mkdir-rename-cache','safe-path','file-manager-roundtrip','file-manager-stat','file-manager-offset','unlink-directory-safe','file-manager-missing-errno-observed','operation-enter-no-leak']}
+    result={ok:true,backend:defaultFs.backend,physical,hits,fmMissingErrno:fmMissingCode||null,fmMissingMessage,stats,assertions:['default-backend','write-budget-no-write','offset-bytes','ignore-refresh','object-cache-preserved','mkdir-rename-cache','safe-path','idempotent-unlink-rmdir','unlink-directory-safe','file-manager-roundtrip','file-manager-stat','file-manager-offset','file-manager-idempotent-delete','file-manager-missing-errno-observed','operation-enter-no-leak']}
     console.log(JSON.stringify(result)); Script.exit(result)
   } catch(e:any) {
     result={ok:false,error:String(e&&e.message||e),code:e&&e.code||null}
