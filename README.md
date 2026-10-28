@@ -8,6 +8,7 @@ Click **Import** to open the skill directly in Scripting.
 
 | Skill | Description | Install |
 |---|---|---|
+| [ask-user](./ask-user) | Ask questions, request clarification or confirmation, and let users choose answers through native inline cards with single-choice, multiple-choice, and optional custom text input. Answers return to the same chat. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fask-user%22%5D) |
 | [design-scripting-custom-gradient-background](./design-scripting-custom-gradient-background) | Add reusable custom gradient backgrounds to Scripting pages, with light and dark color schemes, configurable directions, persistence, and readability checks. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fdesign-scripting-custom-gradient-background%22%5D) |
 | [google-workspace](./google-workspace) | Call Gmail, Google Calendar, and Google Tasks REST APIs from Scripting Runtime with shared Keychain OAuth. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fgoogle-workspace%22%5D) |
 | [grounding-with-exa-search](./grounding-with-exa-search) | Ground answers with up-to-date web information via Exa Search, with multilingual and verifiable source URLs. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fgrounding-with-exa-search%22%5D) |

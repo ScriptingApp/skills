@@ -1,0 +1,29 @@
+{
+  "single": {
+    "question": "你最喜欢哪个季节？",
+    "mode": "single",
+    "options": ["春天", "夏天", "秋天", "冬天"],
+    "allowCustom": true
+  },
+  "multiple": {
+    "question": "你喜欢哪些季节？",
+    "description": "最多选 3 项，也可以填写自己的答案。",
+    "mode": "multiple",
+    "options": [
+      {"id":"spring","label":"春天","description":"花开有时，万物新生","emoji":"🌸"},
+      {"id":"summer","label":"夏天","description":"阳光热烈，晚风悠长","emoji":"☀️"},
+      {"id":"autumn","label":"秋天","description":"落叶温柔，天高云淡","emoji":"🍂"},
+      {"id":"winter","label":"冬天","description":"雪落无声，围炉取暖","emoji":"❄️"}
+    ],
+    "allowCustom": true,
+    "customPlaceholder": "写下自己的答案",
+    "minSelections": 1,
+    "maxSelections": 3
+  },
+  "text": {
+    "question": "你还有什么建议？",
+    "options": [],
+    "allowCustom": true,
+    "customPlaceholder": "写下你的建议"
+  }
+}
