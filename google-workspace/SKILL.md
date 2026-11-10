@@ -133,6 +133,26 @@ scripting-ts run "<skill_dir>/scripts/gmail.ts" \
   --queryparameters '{"operation":"get-thread","id":"THREAD_ID","includeBody":true}'
 ```
 
+### 列出附件
+
+```sh
+scripting-ts run "<skill_dir>/scripts/gmail.ts" \
+  --queryparameters '{"operation":"list-attachments","id":"MESSAGE_ID"}'
+```
+
+返回 `attachments[]`：`index / filename / mimeType / size / attachmentId / partId`。
+
+### 保存附件
+
+```sh
+scripting-ts run "<skill_dir>/scripts/gmail.ts" \
+  --queryparameters '{"operation":"save-attachment","id":"MESSAGE_ID","index":0,"outputPath":"/absolute/path/receipt.png"}'
+```
+
+- `index` 按 `list-attachments` 的顺序，从 0 开始；也可以用 `attachmentId` 指定。
+- 不传 `outputPath` 时保存到临时目录，返回 `savedPath`。
+- 只读操作，不修改邮件。
+
 ### 创建草稿
 
 ```sh

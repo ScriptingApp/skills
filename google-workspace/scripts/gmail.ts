@@ -1,5 +1,5 @@
 import { Script } from "scripting"
-import { createDraft, sendMessage, sendDraft, getMessage, getThread, listLabels, searchMessages, status } from "./lib/gmail"
+import { createDraft, sendMessage, sendDraft, getMessage, getThread, listAttachments, listLabels, saveAttachment, searchMessages, status } from "./lib/gmail"
 
 type Args = Record<string, any>
 
@@ -25,6 +25,14 @@ async function main() {
     case "get-thread":
       if (!params.id && !params.threadId) throw new Error("missing_thread_id")
       result = await getThread(String(params.id || params.threadId), Boolean(params.includeBody))
+      break
+    case "list-attachments":
+    case "attachments":
+      if (!params.id && !params.messageId) throw new Error("missing_message_id")
+      result = await listAttachments(String(params.id || params.messageId))
+      break
+    case "save-attachment":
+      result = await saveAttachment(params)
       break
     case "send-message":
       result = await sendMessage(params)

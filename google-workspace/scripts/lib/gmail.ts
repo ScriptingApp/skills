@@ -216,3 +216,109 @@ export async function createDraft(args: Json) {
   const data = await gmailFetch("/drafts", { method: "POST", body: JSON.stringify({ message: { raw: base64UrlEncodeUtf8(lines.join("\r\n")) } }) })
   return { id: data.id, messageId: data.message?.id || null, threadId: data.message?.threadId || null }
 }
+
+const ATTACHMENT_EXTENSIONS: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/heic": "heic",
+  "application/pdf": "pdf",
+  "text/plain": "txt",
+  "text/csv": "csv",
+  "application/json": "json",
+  "application/zip": "zip",
+}
+
+function extensionForMime(mimeType: string): string {
+  const normalized = mimeType.trim().toLowerCase()
+  const mapped = ATTACHMENT_EXTENSIONS[normalized]
+  if (mapped) return mapped
+  const subtype = normalized.split("/")[1] || "bin"
+  return subtype.replace(/[^a-z0-9]+/g, "") || "bin"
+}
+
+function base64UrlToBytes(value: string): Uint8Array {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/")
+  const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4)
+  const binary = atob(padded)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
+  return bytes
+}
+
+export function collectAttachments(payload: Json): Json[] {
+  const out: Json[] = []
+  const walk = (part: Json): void => {
+    if (!part) return
+    const body = part.body || {}
+    if (body.attachmentId) {
+      out.push({
+        index: out.length,
+        partId: part.partId || null,
+        filename: String(part.filename || ""),
+        mimeType: String(part.mimeType || "application/octet-stream"),
+        size: Number(body.size || 0),
+        attachmentId: String(body.attachmentId),
+      })
+    }
+    const parts = Array.isArray(part.parts) ? part.parts : []
+    for (const child of parts) walk(child)
+  }
+  walk(payload)
+  return out
+}
+
+export async function listAttachments(messageId: string) {
+  const message = await gmailFetch(`/messages/${encodeURIComponent(messageId)}?format=full`)
+  return {
+    messageId: String(message.id || messageId),
+    threadId: message.threadId || null,
+    attachments: collectAttachments(message.payload),
+  }
+}
+
+export async function saveAttachment(args: Json) {
+  const messageId = String(args.messageId || args.id || "")
+  if (!messageId) throw new Error("missing_message_id")
+
+  const listed = await listAttachments(messageId)
+  const attachments: Json[] = listed.attachments as Json[]
+  let target: Json | undefined
+
+  if (args.attachmentId) {
+    target = attachments.find((item: Json) => String(item.attachmentId) === String(args.attachmentId))
+  } else {
+    const index = args.index == null ? 0 : Number(args.index)
+    if (!Number.isInteger(index) || index < 0) throw new Error("invalid_attachment_index")
+    target = attachments[index]
+  }
+
+  if (!target) throw new Error("attachment_not_found")
+
+  const data = await gmailFetch(
+    `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(String(target.attachmentId))}`
+  )
+  const bytes = base64UrlToBytes(String(data.data || ""))
+  const extension = extensionForMime(String(target.mimeType || ""))
+  const rawName = String(target.filename || `attachment-${target.index}`)
+  const safeName = rawName.replace(/[\\/:*?"<>|]+/g, "_") || `attachment-${target.index}`
+  const withExtension = extension && !safeName.toLowerCase().endsWith(`.${extension}`)
+    ? `${safeName}.${extension}`
+    : safeName
+  const directory = String(args.outputDir || FileManager.temporaryDirectory).replace(/\/+$/, "")
+  const path = args.outputPath
+    ? String(args.outputPath)
+    : `${directory}/${withExtension}`
+
+  const parent = path.slice(0, path.lastIndexOf("/"))
+  if (parent) await FileManager.createDirectory(parent, true)
+  await FileManager.writeAsBytes(path, bytes)
+
+  return {
+    messageId,
+    attachment: target,
+    savedPath: path,
+    bytes: bytes.length,
+  }
+}
