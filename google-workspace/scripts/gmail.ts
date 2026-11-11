@@ -1,5 +1,5 @@
 import { Script } from "scripting"
-import { createDraft, sendMessage, sendDraft, getMessage, getThread, listAttachments, listLabels, saveAttachment, searchMessages, status } from "./lib/gmail"
+import { createDraft, sendMessage, sendDraft, getMessage, getThread, listAttachments, listLabels, saveAttachment, searchMessages, status, verifyAuth } from "./lib/gmail"
 
 type Args = Record<string, any>
 
@@ -10,6 +10,11 @@ async function main() {
   switch (operation) {
     case "status":
       result = status()
+      break
+    case "auth-check":
+    case "verify-auth":
+      // 真实发一次 /profile 请求：能区分「token 过期但刷新成功」和「必须重新授权」。
+      result = await verifyAuth()
       break
     case "list-labels":
     case "labels":
@@ -50,5 +55,26 @@ async function main() {
 }
 
 main().catch((error) => {
-  Script.exit({ ok: false, error: error instanceof Error ? error.message : String(error), status: status() })
+  const message = error instanceof Error ? error.message : String(error)
+  const current = status()
+  const errorCode = message.split(":")[0]
+  let hint: string
+  if (current.needsReauth || errorCode === "gmail_reauth_required") {
+    // 授权类失败：直接给可执行命令，不要让人再猜。
+    hint = `授权已失效（${current.reauthReason || errorCode}），直接重新授权：${current.nextAction || "scripting-ts run <skill_dir>/scripts/setup-oauth.tsx --queryparameters '{\"mode\":\"callback\"}'"}`
+  } else if (errorCode === "gmail_token_refresh_unreachable") {
+    hint = "刷新 access token 时网络失败；先跑 auth-status 复核（needsReauth 为 false 就是网络问题），可重试一次。"
+  } else if (errorCode === "gmail_network_error") {
+    hint = "已拿到 token，但 Gmail 请求网络失败，重试一次即可。"
+  } else {
+    hint = "非授权问题，按 error 修正参数或重试。"
+  }
+  Script.exit({
+    ok: false,
+    error: message,
+    errorCode,
+    needsReauth: current.needsReauth,
+    hint,
+    status: current,
+  })
 })

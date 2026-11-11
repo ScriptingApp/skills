@@ -68,14 +68,44 @@ https://www.googleapis.com/auth/tasks
 scripting-ts run "<skill_dir>/scripts/auth-status.ts"
 ```
 
-成功状态应包括：
+默认会真实请求一次 `/profile`，返回 `summary`（一句人话结论）、`needsReauth`、`nextAction` 和完整 `status`；同一行里的 `verify` 带账号邮箱。只想看本地状态、不发网络请求时加 `--queryparameters '{"verify":false}'`。
+
+`accessTokenExpired: true` **不等于**需要重新授权：只要 `hasRefreshToken: true`，下一次调用会自动刷新（`canAutoRefresh: true`）。真正需要人介入的是 `needsReauth: true`，此时 `nextAction` 就是可直接执行的重新授权命令（其中的 `<skill_dir>` 替换成本 skill 安装目录）。
+
+## 授权失效：判断与重新授权（必读）
+
+Gmail 调用返回 `ok:false` 时，先看 `errorCode` / `needsReauth` / `hint`，不要盲目重试，也不要把原始错误直接丢给用户：
+
+| errorCode | 含义 | 处理 |
+|---|---|---|
+| `gmail_reauth_required` | refresh token 失效（invalid_grant 等），或没有可用凭据 | 立即重新授权 |
+| `gmail_token_refresh_unreachable` | 刷新 token 的网络请求失败（Scripting 常只报“网络连接已中断”） | 先跑 `auth-status` 复核；能连到 Google 就重试一次，仍失败再判定网络问题 |
+| `gmail_network_error` | 已拿到 token，但 Gmail 请求网络失败 | 重试一次 |
+| `gmail_api_error` | Gmail 返回业务错误（401 已自动刷新 + 重试，仍失败才算） | 按 message 处理 |
+
+硬性规则：**只要 `needsReauth` 为 true，就在同一轮对话里直接启动重新授权，并告诉用户要在 Safari 完成哪几步**；不要先汇报“网络错误”等用户来提醒。
+
+重新授权（Desktop client + loopback 回调）：
+
+```sh
+scripting-ts run "<skill_dir>/scripts/setup-oauth.tsx" --queryparameters '{"mode":"callback"}'
+```
+
+- 命令会打开 Safari 的 Google 授权页，脚本最多等 10 分钟回调；用后台 job 运行，避免阻塞。
+- 用户需要在 Safari 里选账号 → 允许全部权限（提示“应用未验证”时点「高级」→「继续」）。
+- 用户说页面被关掉或已超时：先关掉旧 job 再重跑，不要同时开两个（各自起一个 loopback 端口）。
+- 授权完成后立刻重跑 `auth-status.ts`，确认 `needsReauth:false` 且 `verify.ok:true`，再继续原任务。
+- 外部应用处于 Testing 时 refresh token 通常 7 天过期，“过几天又掉了”属正常，按上面流程重授权即可。
+
+成功状态示例：
 
 ```json
 {
   "authorized": true,
   "clientConfigured": true,
   "hasRefreshToken": true,
-  "accessTokenExpired": false
+  "accessTokenExpired": false,
+  "needsReauth": false
 }
 ```
 
@@ -95,6 +125,8 @@ scripts/gmail.ts
 scripting-ts run "<skill_dir>/scripts/gmail.ts" \
   --queryparameters '{"operation":"status"}'
 ```
+
+只读 Keychain，不发网络请求。要确认“真的能用”用 `{"operation":"auth-check"}`，它会发一次 `/profile` 并返回账号邮箱。
 
 ### 列出标签
 

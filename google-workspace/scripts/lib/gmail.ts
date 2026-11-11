@@ -1,8 +1,10 @@
 import {
   GMAIL_SCOPES,
   GOOGLE_TOKEN_URL,
+  clearReauthRequired,
   getClientConfig,
   getStoredCredential,
+  markReauthRequired,
   saveCredential,
   safeStatus,
 } from "./auth"
@@ -13,8 +15,35 @@ type Json = Record<string, any>
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
 
+// 把底层异常转成可读字符串：Scripting 的 fetch 失败常常只说“网络连接已中断”，
+// 不带状态码，所以要把 name/message 都留下，并在错误码里标明是哪一步失败。
+function describeError(error: any): string {
+  if (!error) return "unknown_error"
+  const name = error.name ? String(error.name) : ""
+  const message = error.message ? String(error.message) : String(error)
+  return name && !message.includes(name) ? `${name}:${message}` : message
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** 网络类失败重试一次；HTTP 错误不重试（避免重复发送）。 */
+async function fetchWithRetry(url: string, init: any, retries = 1): Promise<any> {
+  let lastError: any
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetch(url, init)
+    } catch (error) {
+      lastError = error
+      if (attempt < retries) await sleep(600)
+    }
+  }
+  throw lastError
+}
+
 async function postForm(url: string, values: Record<string, string>) {
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(values).toString(),
@@ -25,22 +54,52 @@ async function postForm(url: string, values: Record<string, string>) {
 
 export async function getAccessToken(): Promise<string> {
   const credential = getStoredCredential()
-  if (!credential?.oauthToken) throw new Error("gmail_not_authorized")
+  if (!credential?.oauthToken) throw new Error("gmail_reauth_required:no_access_token")
   const expiresAt = credential.oauthTokenExpiresAt ?? null
   if (!expiresAt || Date.now() < expiresAt - 60_000) return credential.oauthToken
-  if (!credential.oauthRefreshToken) throw new Error("gmail_token_expired_no_refresh_token")
+  return refreshAccessToken()
+}
+
+/** 用 refresh token 换新的 access token；失败时写 reauth 标记。force 忽略本地过期判断。 */
+export async function refreshAccessToken(force = false): Promise<string> {
+  const credential = getStoredCredential()
+  if (!credential?.oauthToken) throw new Error("gmail_reauth_required:no_access_token")
+  const expiresAt = credential.oauthTokenExpiresAt ?? null
+  if (!force && expiresAt && Date.now() < expiresAt - 60_000) return credential.oauthToken
+  if (!credential.oauthRefreshToken) {
+    markReauthRequired("no_refresh_token")
+    throw new Error("gmail_reauth_required:no_refresh_token")
+  }
 
   const { clientId, clientSecret } = getClientConfig()
-  if (!clientId || !clientSecret) throw new Error("gmail_oauth_client_not_configured")
-  const token = await postForm(GOOGLE_TOKEN_URL, {
-    client_id: clientId,
-    client_secret: clientSecret,
-    refresh_token: credential.oauthRefreshToken,
-    grant_type: "refresh_token",
-  })
-  if (!token.response.ok || !token.json.access_token) {
-    throw new Error(`gmail_token_refresh_failed:${token.json.error || token.response.status}`)
+  if (!clientId || !clientSecret) {
+    markReauthRequired("oauth_client_not_configured")
+    throw new Error("gmail_reauth_required:oauth_client_not_configured")
   }
+
+  let token: { response: any; json: Json }
+  try {
+    token = await postForm(GOOGLE_TOKEN_URL, {
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: credential.oauthRefreshToken,
+      grant_type: "refresh_token",
+    })
+  } catch (error) {
+    // 网络层失败：不一定是授权问题，但必须说清楚失败在刷新这一步。
+    throw new Error(`gmail_token_refresh_unreachable:${describeError(error)}`)
+  }
+
+  if (!token.response.ok || !token.json.access_token) {
+    const code = String(token.json.error || token.response.status)
+    if (["invalid_grant", "invalid_client", "unauthorized_client"].includes(code)) {
+      markReauthRequired(code)
+      throw new Error(`gmail_reauth_required:${code}`)
+    }
+    throw new Error(`gmail_token_refresh_failed:${code}`)
+  }
+
+  clearReauthRequired()
   saveCredential({
     oauthToken: String(token.json.access_token),
     oauthRefreshToken: credential.oauthRefreshToken,
@@ -54,25 +113,70 @@ export async function getAccessToken(): Promise<string> {
   return String(token.json.access_token)
 }
 
-export async function gmailFetch(path: string, options: any = {}): Promise<Json> {
+export async function gmailFetch(path: string, options: any = {}, retried = false): Promise<Json> {
   const token = await getAccessToken()
-  const response = await fetch(path.startsWith("http") ? path : `${GMAIL_API}${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...(options.headers || {}),
-    },
-  })
+  const url = path.startsWith("http") ? path : `${GMAIL_API}${path}`
+  let response: any
+  try {
+    response = await fetchWithRetry(url, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.headers || {}),
+      },
+    })
+  } catch (error) {
+    throw new Error(`gmail_network_error:${describeError(error)}`)
+  }
+
   const text = await response.text()
   let json: Json = {}
   try { json = text ? JSON.parse(text) : {} } catch { json = { raw: text.slice(0, 2000) } }
+
+  if (response.status === 401) {
+    // token 看似未过期但服务器不认：强制刷新一次再试，仍失败就是真的需要重新授权。
+    if (!retried) {
+      try {
+        await refreshAccessToken(true)
+      } catch (error) {
+        throw error instanceof Error ? error : new Error(describeError(error))
+      }
+      return gmailFetch(path, options, true)
+    }
+    markReauthRequired("invalid_credentials")
+    throw new Error("gmail_reauth_required:invalid_credentials")
+  }
+
   if (!response.ok) {
     const message = json?.error?.message || json?.error?.status || response.status
     throw new Error(`gmail_api_error:${message}`)
   }
   return json
+}
+
+/** 真实发一次请求校验授权：能区分“本地 token 过期→刷新成功”和“需要重新授权”。 */
+export async function verifyAuth(): Promise<Json> {
+  const before = safeStatus()
+  try {
+    const profile = await gmailFetch("/profile")
+    return {
+      ok: true,
+      refreshAttempted: before.accessTokenExpired === true,
+      emailAddress: profile.emailAddress || null,
+      messagesTotal: profile.messagesTotal ?? null,
+      status: safeStatus(),
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : describeError(error)
+    return {
+      ok: false,
+      error: message,
+      errorCode: message.split(":")[0],
+      status: safeStatus(),
+    }
+  }
 }
 
 export function status() {
