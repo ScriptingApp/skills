@@ -4,7 +4,7 @@
  */
 
 import { Script, fetch } from "scripting"
-import { promptForAuth, getStoredAuth, isConfigured } from "./tg-auth-page"
+import { promptForAuth, getStoredAuth, normalizeChatId } from "./tg-auth-page"
 
 const isZh = Device.systemLanguageCode === "zh"
 
@@ -375,8 +375,8 @@ async function handleCommand(cmd: TgCommand): Promise<void> {
   
   const { token, chatId } = auth
   
-  // 使用指定的 chat_id 或默认的 chatId
-  const targetChatId = cmd.chat_id || chatId
+  // 使用指定的 chat_id 或默认的 chatId（公开用户名自动补 @）
+  const targetChatId = normalizeChatId(cmd.chat_id || chatId)
   
   switch (cmd.command) {
     // ==================== 原始更新读取 ====================
