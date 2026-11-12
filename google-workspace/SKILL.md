@@ -208,10 +208,11 @@ scripting-ts run "<skill_dir>/scripts/gmail.ts" \
 
 ```sh
 scripting-ts run "<skill_dir>/scripts/gmail.ts" --queryparameters '{"operation":"send-message","to":"someone@example.com","subject":"主题","body":"邮件正文","confirm":true}'
+scripting-ts run "<skill_dir>/scripts/gmail.ts" --queryparameters '{"operation":"send-message","from":"Scripting TestFlight <tf@scripting.fun>","to":"someone@example.com","subject":"主题","body":"邮件正文","confirm":true}'
 scripting-ts run "<skill_dir>/scripts/gmail.ts" --queryparameters '{"operation":"send-draft","draftId":"DRAFT_ID","confirm":true}'
 ```
 
-send-message 支持 to、cc、bcc（字符串或数组），subject 和纯文本 body。中文主题使用 RFC 2047 编码；邮件头拒绝 CR/LF，避免注入。不支持附件或完整回复线程语义。发送草稿前应检查草稿收件人和内容。成功返回 Gmail id、threadId、labelIds 表示 Gmail 接受发送，不保证收件方已送达。
+send-message 支持 to、cc、bcc（字符串或数组）、可选 from、subject 和纯文本 body。`from` 必须是当前账号在 Gmail 中已验证的「用其他地址发邮件」别名，否则会被拒绝或改写成账号地址；不传时使用账号默认地址。中文主题使用 RFC 2047 编码；邮件头拒绝 CR/LF，避免注入。不支持附件或完整回复线程语义。发送草稿前应检查草稿收件人和内容。成功返回 Gmail id、threadId、labelIds 表示 Gmail 接受发送，不保证收件方已送达。
 
 ## Token 刷新
 

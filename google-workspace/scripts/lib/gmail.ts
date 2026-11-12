@@ -283,6 +283,8 @@ function mailRaw(args: Json): string {
   const subject = safeHeader(args.subject)
   if (!to.trim() || !subject.trim() || typeof args.body !== "string") throw new Error("gmail_requires_to_subject_body")
   const cc = safeHeader(args.cc), bcc = safeHeader(args.bcc)
+  // 可选发件地址：必须是当前 Gmail 账号已验证的 sendAs 别名，否则 Gmail 会拒绝或改写
+  const from = args.from ? safeHeader(args.from).trim() : ""
   // RFC 2047 encoded words kept below the 75-character limit.
   const chunks: string[] = []
   let chunk = ""
@@ -292,7 +294,7 @@ function mailRaw(args: Json): string {
   }
   if (chunk) chunks.push(chunk)
   const encodedSubject = chunks.map(part => `=?UTF-8?B?${base64Utf8(part)}?=`).join("\r\n ")
-  const lines = [`To: ${to}`, ...(cc ? [`Cc: ${cc}`] : []), ...(bcc ? [`Bcc: ${bcc}`] : []), `Subject: ${encodedSubject}`, "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", base64Utf8(args.body).match(/.{1,76}/g)?.join("\r\n") || ""]
+  const lines = [...(from ? [`From: ${from}`] : []), `To: ${to}`, ...(cc ? [`Cc: ${cc}`] : []), ...(bcc ? [`Bcc: ${bcc}`] : []), `Subject: ${encodedSubject}`, "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", base64Utf8(args.body).match(/.{1,76}/g)?.join("\r\n") || ""]
   return base64UrlEncodeUtf8(lines.join("\r\n"))
 }
 
