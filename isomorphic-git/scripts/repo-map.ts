@@ -15,6 +15,35 @@ function validateName(name: string) {
   // empty/unsupported punctuation.
   if (typeof name !== 'string' || !/^[a-zA-Z0-9 _-]+$/.test(name) || name.trim().length === 0 || name.includes('..')) fail('INVALID_REPOSITORY_NAME', 'Use letters, digits, spaces, underscore or dash for repository name')
 }
+/**
+ * iOS exposes the same tree as /var and /private/var, and repo-map keys are literal
+ * strings captured from whatever path the caller used at init/clone time. Lookups
+ * therefore try the canonical form, the legacy trailing-slash form, and the other
+ * prefix, so one directory never ends up with two mappings.
+ */
+export function pathVariants(dir: string): string[] {
+  const clean = dir.length > 1 ? dir.replace(/\/+$/, '') : dir
+  const out: string[] = []
+  const push = (value: string) => { if (value && !out.includes(value)) out.push(value) }
+  push(clean)
+  push(clean + '/')
+  if (clean.startsWith('/var/')) push('/private' + clean)
+  else if (clean.startsWith('/private/var/')) push(clean.slice('/private'.length))
+  return out
+}
+
+export function lookupRepo(map: RepoMap, dir: string): { key: string; name: string } | undefined {
+  for (const key of pathVariants(dir)) {
+    const name = map[key]
+    if (name) return { key, name }
+  }
+  return undefined
+}
+
+function sameProjectPath(a: string, b: string): boolean {
+  return a === b || pathVariants(a).includes(b) || pathVariants(b).includes(a)
+}
+
 export function validateRepoMapContent(text:string): RepoMap {
   let value:any
   try {value=JSON.parse(text)}catch{fail('REPO_MAP_INVALID','Invalid repository map JSON')}
@@ -69,25 +98,25 @@ export function createRepoMapManager(root: string, deps: RepoMapDependencies = n
   }
   async function existing(dir: string): Promise<string> {
     validateDir(dir)
-    const map = await load(), name = map[dir]
-    if (!name) fail('REPOSITORY_NOT_FOUND', 'No existing repository mapping; initialize first')
-    return root + '/' + name
+    const map = await load(), hit = lookupRepo(map, dir)
+    if (!hit) fail('REPOSITORY_NOT_FOUND', 'No existing repository mapping; initialize first')
+    return root + '/' + hit.name
   }
   async function resolve(dir: string, name?: string): Promise<string> {
     validateDir(dir); if (name !== undefined) validateName(name)
     // Every potentially mutating resolver observes the map under the short lock.
     // Read-only callers use existing(), which never creates a lock/map.
     return transaction(async () => {
-      const map = await load(), stored = map[dir]
-      if (stored) {
-        if (name !== undefined && name !== stored) fail('REPO_REBIND_REQUIRED', 'Mapping established concurrently with another name')
-        return root + '/' + stored
+      const map = await load(), hit = lookupRepo(map, dir)
+      if (hit) {
+        if (name !== undefined && name !== hit.name) fail('REPO_REBIND_REQUIRED', 'Mapping established concurrently with another name')
+        return root + '/' + hit.name
       }
       const selected = name ?? (dir.split('/').filter(Boolean).pop() || 'unnamed').replace(/[^a-zA-Z0-9_-]/g, '_')
       validateName(selected)
-      if (Object.entries(map).some(([other, value]) => other !== dir && value === selected)) fail('REPO_NAME_CONFLICT', 'Repository name already belongs to another project; choose a different name')
+      if (Object.entries(map).some(([other, value]) => !sameProjectPath(other, dir) && value === selected)) fail('REPO_NAME_CONFLICT', 'Repository name already belongs to another project; choose a different name')
       if (await deps.exists(root + '/' + selected)) fail('REPO_NAME_CONFLICT', 'An unmapped gitdir already exists with this name; refusing to attach another project to its metadata')
-      map[dir] = selected
+      map[pathVariants(dir)[0]] = selected
       await save(map)
       return root + '/' + selected
     })
@@ -100,15 +129,15 @@ export function createRepoMapManager(root: string, deps: RepoMapDependencies = n
     validateDir(dir)
     if (!await deps.exists(mapFile)) return { message: 'No repos found' }
     return transaction(async () => {
-      const map = await load(), repoName = map[dir]
-      if (!repoName) return { message: `No repo found for '${dir}'` }
-      const release=await acquireRepositoryLock(root+'/'+repoName)
+      const map = await load(), hit = lookupRepo(map, dir)
+      if (!hit) return { message: `No repo found for '${dir}'` }
+      const release=await acquireRepositoryLock(root+'/'+hit.name)
       try{
-        await assertNoPendingRevert(root+'/'+repoName,dir)
-        delete map[dir]
+        await assertNoPendingRevert(root+'/'+hit.name,dir)
+        delete map[hit.key]
         await save(map)
       }finally{await release()}
-      return { message: `Removed repo mapping for '${dir}'`, repoName }
+      return { message: `Removed repo mapping for '${dir}'`, repoName: hit.name }
     })
   }
   return { resolve, existing, list, remove, mapFile, inspect:()=>createSnapshotStore(mapFile,'map').inspect() }
