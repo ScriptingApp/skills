@@ -312,15 +312,78 @@ export async function sendDraft(args: Json) {
 }
 
 export async function createDraft(args: Json) {
-  const to = Array.isArray(args.to) ? args.to.join(", ") : String(args.to || "")
-  const cc = Array.isArray(args.cc) ? args.cc.join(", ") : String(args.cc || "")
-  const bcc = Array.isArray(args.bcc) ? args.bcc.join(", ") : String(args.bcc || "")
-  const subject = String(args.subject || "")
-  const body = String(args.body || "")
-  if (!to || !subject) throw new Error("gmail_draft_requires_to_and_subject")
-  const lines = [`To: ${to}`, cc ? `Cc: ${cc}` : null, bcc ? `Bcc: ${bcc}` : null, `Subject: ${subject}`, "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "", body].filter(Boolean)
-  const data = await gmailFetch("/drafts", { method: "POST", body: JSON.stringify({ message: { raw: base64UrlEncodeUtf8(lines.join("\r\n")) } }) })
+  const payload = { ...args, body: typeof args.body === "string" ? args.body : "" }
+  // 复用 mailRaw：支持 from/cc/bcc，主题按 RFC 2047 编码，正文 base64。
+  const data = await gmailFetch("/drafts", { method: "POST", body: JSON.stringify({ message: { raw: mailRaw(payload) } }) })
   return { id: data.id, messageId: data.message?.id || null, threadId: data.message?.threadId || null }
+}
+
+/** 草稿列表项：draftId 与 messageId 分开返回，避免与消息 id 混淆。 */
+export async function listDrafts(args: Json = {}) {
+  const params = new URLSearchParams()
+  if (args.q) params.set("q", String(args.q))
+  if (args.maxResults) params.set("maxResults", String(Math.min(50, Math.max(1, Number(args.maxResults)))))
+  if (args.pageToken) params.set("pageToken", String(args.pageToken))
+  if (args.includeSpamTrash) params.set("includeSpamTrash", "true")
+  const data = await gmailFetch(`/drafts?${params.toString()}`)
+  const drafts = await Promise.all((data.drafts || []).map(async (item: Json) => {
+    const messageId = item.message?.id
+    const base: Json = { draftId: item.id, messageId: messageId || null, threadId: item.message?.threadId || null }
+    if (!messageId) return base
+    const message = await gmailFetch(`/messages/${encodeURIComponent(messageId)}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Subject&metadataHeaders=Date`)
+    const summary = summarizeMessage(message)
+    return { ...base, snippet: summary.snippet, internalDate: summary.internalDate, headers: summary.headers }
+  }))
+  return { nextPageToken: data.nextPageToken || null, resultSizeEstimate: data.resultSizeEstimate || drafts.length, drafts }
+}
+
+/** 搜索/列表里的 id 常是 message id，统一解析成真正的 draft id。 */
+async function resolveDraftId(value: string): Promise<string> {
+  const text = String(value || "").trim()
+  if (!text) throw new Error("missing_draft_id")
+  try {
+    const draft = await gmailFetch(`/drafts/${encodeURIComponent(text)}?format=minimal`)
+    if (draft?.id) return String(draft.id)
+  } catch {
+    // 不是 draft id，继续按 message id 回退查找。
+  }
+  const data = await gmailFetch("/drafts?maxResults=100")
+  const match = (data.drafts || []).find((item: Json) => String(item.message?.id || "") === text)
+  if (!match) throw new Error("draft_not_found")
+  return String(match.id)
+}
+
+export async function getDraft(args: Json) {
+  const requested = String(args.id || args.draftId || args.messageId || "")
+  const draftId = await resolveDraftId(requested)
+  const includeBody = Boolean(args.includeBody)
+  const format = includeBody ? "full" : "metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Subject&metadataHeaders=Date"
+  const draft = await gmailFetch(`/drafts/${encodeURIComponent(draftId)}?format=${format}`)
+  const summary = summarizeMessage(draft.message || {}, includeBody)
+  return { draftId: draft.id, messageId: summary.id, threadId: summary.threadId, snippet: summary.snippet, internalDate: summary.internalDate, headers: summary.headers, ...(includeBody ? { bodyText: summary.bodyText } : {}) }
+}
+
+export async function updateDraft(args: Json) {
+  const requested = String(args.id || args.draftId || args.messageId || "")
+  const draftId = await resolveDraftId(requested)
+  const payload = { ...args, body: typeof args.body === "string" ? args.body : "" }
+  const data = await gmailFetch(`/drafts/${encodeURIComponent(draftId)}`, { method: "PUT", body: JSON.stringify({ message: { raw: mailRaw(payload) } }) })
+  return { id: data.id, messageId: data.message?.id || null, threadId: data.message?.threadId || null }
+}
+
+export async function deleteDraft(args: Json) {
+  if (args.confirm !== true) throw new Error("delete_requires_confirm_true")
+  const requested = String(args.id || args.draftId || args.messageId || "")
+  const draftId = await resolveDraftId(requested)
+  await gmailFetch(`/drafts/${encodeURIComponent(draftId)}`, { method: "DELETE" })
+  let verify = "unknown"
+  try {
+    const draft = await gmailFetch(`/drafts/${encodeURIComponent(draftId)}?format=minimal`)
+    verify = draft?.id ? "still_exists" : "unknown"
+  } catch (error) {
+    verify = `gone:${error instanceof Error ? error.message : String(error)}`
+  }
+  return { deleted: true, draftId, requested, verify }
 }
 
 const ATTACHMENT_EXTENSIONS: Record<string, string> = {

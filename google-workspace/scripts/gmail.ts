@@ -1,5 +1,5 @@
 import { Script } from "scripting"
-import { createDraft, sendMessage, sendDraft, getMessage, getThread, listAttachments, listLabels, saveAttachment, searchMessages, status, verifyAuth } from "./lib/gmail"
+import { createDraft, deleteDraft, getDraft, listDrafts, updateDraft, sendMessage, sendDraft, getMessage, getThread, listAttachments, listLabels, saveAttachment, searchMessages, status, verifyAuth } from "./lib/gmail"
 
 type Args = Record<string, any>
 
@@ -47,6 +47,19 @@ async function main() {
       break
     case "create-draft":
       result = await createDraft(params)
+      break
+    case "list-drafts":
+    case "drafts":
+      result = await listDrafts(params)
+      break
+    case "get-draft":
+      result = await getDraft(params)
+      break
+    case "update-draft":
+      result = await updateDraft(params)
+      break
+    case "delete-draft":
+      result = await deleteDraft(params)
       break
     default:
       throw new Error(`unknown_operation:${operation}`)

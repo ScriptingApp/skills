@@ -204,6 +204,28 @@ scripting-ts run "<skill_dir>/scripts/gmail.ts" \
 }
 ```
 
+### 草稿 CRUD（列表 / 查看 / 修改 / 删除）
+
+```sh
+# 列表（可带 Gmail 搜索语法 q，返回 draftId 与 messageId）
+scripting-ts run "<skill_dir>/scripts/gmail.ts" --queryparameters '{"operation":"list-drafts","q":"subject:报告","maxResults":10}'
+
+# 查看单个草稿（includeBody=true 取正文）
+scripting-ts run "<skill_dir>/scripts/gmail.ts" --queryparameters '{"operation":"get-draft","id":"DRAFT_ID","includeBody":true}'
+
+# 修改草稿（整体替换，需提供 to/subject/body；支持 from/cc/bcc）
+scripting-ts run "<skill_dir>/scripts/gmail.ts" --queryparameters '{"operation":"update-draft","id":"DRAFT_ID","to":"someone@example.com","subject":"新主题","body":"新正文"}'
+
+# 删除草稿（必须 confirm:true）
+scripting-ts run "<skill_dir>/scripts/gmail.ts" --queryparameters '{"operation":"delete-draft","id":"DRAFT_ID","confirm":true}'
+```
+
+- `id` 可以传 draft id，也可以传 message id；脚本会先按 draft id 查，404 时在 `GET /drafts` 里按 `message.id` 回退匹配（`in:drafts` 搜索返回的 id 通常是 message id）。
+- `list-drafts` 返回 `drafts[] = { draftId, messageId, threadId, snippet, internalDate, headers }`，两者分开命名，避免混淆。
+- `delete-draft` 删除后会回读校验，返回 `verify: gone:...` 表示确实删掉了，`still_exists` 表示未生效。
+- 草稿写入复用 send-message 的原文构造逻辑：主题按 RFC 2047 编码、正文 base64、邮件头拒绝 CR/LF，避免中文主题被弄乱。
+- 草稿权限包含在 `gmail.compose` 中，不需要 `gmail.modify`。
+
 ### 发送邮件与发送草稿
 
 ```sh
