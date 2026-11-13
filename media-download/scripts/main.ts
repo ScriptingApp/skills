@@ -98,15 +98,15 @@ async function finalize(item: AcquiredItem, policy: ReturnType<typeof normalizeI
       return { jobId: item.jobId, title: item.title, state: "completed", kind: "audio", container: "original", mediaPath: final, rawFilesRetained: policy.keepRawFiles, finalizationMethod: "preserved-original" }
     }
     if (item.kind === "progressive") {
-      const source = item.inputs.mediaPath!; await verify(source, "av"); const sourceContainer = await inputContainer(source); const videoCodec = await primaryVideoCodec(source)
+      const source = item.inputs.mediaPath!; const sourceProbe = await probe(source); const sourceCounts = counts(sourceProbe); if (sourceCounts.video < 1) throw new Error("Final media does not contain expected streams"); const expectedStreams: "av" | "video" = sourceCounts.audio > 0 ? "av" : "video"; const sourceContainer = await inputContainer(source); const videoCodec = await primaryVideoCodec(source)
       if (policy.container === "mp4" && (sourceContainer !== "mp4" || !isApplePlaybackCompatibleVideo(videoCodec))) {
         await shell(`ffmpeg -nostdin -hide_banner -loglevel error -i ${shellQuote(source)} -map 0:v:0 -map 0:a:0 -c:v h264_videotoolbox -b:v 8M -c:a aac -b:a 192k -movflags +faststart ${shellQuote(stageMp4)}`, 900)
-        await verify(stageMp4, "av"); await promote(stageMp4, pathJoin(item.resultDir, "media.mp4"), item.rawDir, policy.keepRawFiles)
+        await verify(stageMp4, expectedStreams); await promote(stageMp4, pathJoin(item.resultDir, "media.mp4"), item.rawDir, policy.keepRawFiles)
         return { jobId: item.jobId, title: item.title, state: "completed", kind: "video", container: "mp4", mediaPath: pathJoin(item.resultDir, "media.mp4"), rawFilesRetained: policy.keepRawFiles, finalizationMethod: "transcode-mp4" }
       }
       if (policy.container === "mkv" && sourceContainer !== "mkv") throw new Error("Requested MKV requires a separate remux operation not available for progressive input")
       const final = pathJoin(item.resultDir, sourceContainer === "mp4" ? "media.mp4" : sourceContainer === "mkv" ? "media.mkv" : "media")
-      const stage = pathJoin(item.resultDir, ".assembling.media"); await copyToStage(source, stage); await verify(stage, "av"); await promote(stage, final, item.rawDir, policy.keepRawFiles)
+      const stage = pathJoin(item.resultDir, ".assembling.media"); await copyToStage(source, stage); await verify(stage, expectedStreams); await promote(stage, final, item.rawDir, policy.keepRawFiles)
       return { jobId: item.jobId, title: item.title, state: "completed", kind: "video", container: sourceContainer, mediaPath: final, rawFilesRetained: policy.keepRawFiles, finalizationMethod: "preserved-original" }
     }
     const video = item.inputs.videoPath!, audio = item.inputs.audioPath!; await verify(video, "video"); await verify(audio, "audio")
