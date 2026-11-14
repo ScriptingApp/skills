@@ -56,6 +56,7 @@ http://127.0.0.1:<随机端口>/oauth2callback
 ```text
 https://www.googleapis.com/auth/gmail.readonly
 https://www.googleapis.com/auth/gmail.compose
+https://www.googleapis.com/auth/gmail.modify
 https://www.googleapis.com/auth/calendar
 https://www.googleapis.com/auth/tasks
 ```
@@ -184,6 +185,20 @@ scripting-ts run "<skill_dir>/scripts/gmail.ts" \
 - `index` 按 `list-attachments` 的顺序，从 0 开始；也可以用 `attachmentId` 指定。
 - 不传 `outputPath` 时保存到临时目录，返回 `savedPath`。
 - 只读操作，不修改邮件。
+
+### 修改邮件标签（移出垃圾箱 / 标记已读）
+
+```sh
+# 把一封或多封移回收件箱（移除 SPAM/TRASH，添加 INBOX+UNREAD）
+scripting-ts run "<skill_dir>/scripts/gmail.ts" --queryparameters '{"operation":"move-to-inbox","ids":["MSG_ID"],"confirm":true}'
+
+# 任意标签增删（例如只标记已读）
+scripting-ts run "<skill_dir>/scripts/gmail.ts" --queryparameters '{"operation":"modify-labels","id":"MSG_ID","removeLabelIds":["UNREAD"],"confirm":true}'
+```
+
+- 需要 `gmail.modify` 权限；未授权时会报 `gmail_api_error`（Insufficient Permission），先按上面「OAuth 权限」补齐并重新授权。
+- `ids` 支持数组，`id` 支持单封；`addLabelIds` / `removeLabelIds` 支持字符串或数组。
+- 必须传 `confirm:true`，返回每封邮件的最新 `labelIds`，便于确认 SPAM/TRASH 已移除。
 
 ### 创建草稿
 

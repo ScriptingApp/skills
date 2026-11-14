@@ -14,6 +14,7 @@ export const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 export const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.compose",
+  "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/calendar",
   "https://www.googleapis.com/auth/tasks",
 ].join(" ")

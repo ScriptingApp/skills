@@ -13,6 +13,7 @@ const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.compose",
+  "https://www.googleapis.com/auth/gmail.modify",
 ]
 
 function safeError(code, message, extra) {

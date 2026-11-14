@@ -1,5 +1,5 @@
 import { Script } from "scripting"
-import { createDraft, deleteDraft, getDraft, listDrafts, updateDraft, sendMessage, sendDraft, getMessage, getThread, listAttachments, listLabels, saveAttachment, searchMessages, status, verifyAuth } from "./lib/gmail"
+import { createDraft, deleteDraft, getDraft, listDrafts, updateDraft, modifyMessageLabels, sendMessage, sendDraft, getMessage, getThread, listAttachments, listLabels, saveAttachment, searchMessages, status, verifyAuth } from "./lib/gmail"
 
 type Args = Record<string, any>
 
@@ -61,6 +61,18 @@ async function main() {
     case "delete-draft":
       result = await deleteDraft(params)
       break
+    case "modify-labels":
+      result = await modifyMessageLabels(params)
+      break
+    case "move-to-inbox": {
+      // 垃圾箱/回收站 → 收件箱，保留未读；需 gmail.modify 权限。
+      result = await modifyMessageLabels({
+        ...params,
+        addLabelIds: ["INBOX", "UNREAD"],
+        removeLabelIds: ["SPAM", "TRASH"],
+      })
+      break
+    }
     default:
       throw new Error(`unknown_operation:${operation}`)
   }

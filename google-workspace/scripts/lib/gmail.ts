@@ -298,6 +298,25 @@ function mailRaw(args: Json): string {
   return base64UrlEncodeUtf8(lines.join("\r\n"))
 }
 
+/** 修改单封/多封邮件标签：用于移出垃圾箱、标记已读等。需 gmail.modify 权限与 confirm:true。 */
+export async function modifyMessageLabels(args: Json) {
+  if (args.confirm !== true) throw new Error("modify_requires_confirm_true")
+  const ids = Array.isArray(args.ids) ? args.ids.map(String) : args.id ? [String(args.id)] : []
+  if (ids.length === 0) throw new Error("missing_message_id")
+  const addLabelIds = Array.isArray(args.addLabelIds) ? args.addLabelIds.map(String) : args.addLabelIds ? [String(args.addLabelIds)] : []
+  const removeLabelIds = Array.isArray(args.removeLabelIds) ? args.removeLabelIds.map(String) : args.removeLabelIds ? [String(args.removeLabelIds)] : []
+  if (addLabelIds.length === 0 && removeLabelIds.length === 0) throw new Error("missing_label_change")
+  const messages: Json[] = []
+  for (const id of ids) {
+    const data = await gmailFetch(`/messages/${encodeURIComponent(id)}/modify`, {
+      method: "POST",
+      body: JSON.stringify({ addLabelIds, removeLabelIds }),
+    })
+    messages.push({ id: data.id, threadId: data.threadId, labelIds: data.labelIds || [] })
+  }
+  return { modified: messages.length, messages }
+}
+
 export async function sendMessage(args: Json) {
   if (args.confirm !== true) throw new Error("send_requires_confirm_true")
   const data = await gmailFetch("/messages/send", { method: "POST", body: JSON.stringify({ raw: mailRaw(args) }) })
