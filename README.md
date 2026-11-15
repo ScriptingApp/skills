@@ -18,6 +18,7 @@ Click **Import** to open the skill directly in Scripting.
 | [rich-maps](./rich-maps) | Render interactive MapKit UIs for markers, navigation, traffic, nearby places, itineraries, route comparison, exploration, and trip planning. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Frich-maps%22%5D) |
 | [ssh-manager](./ssh-manager) | Manage SSH servers, execute remote commands, and transfer files using password or key authentication. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fssh-manager%22%5D) |
 | [telegram-bot](./telegram-bot) | Read Bot updates and manage Telegram group or channel messages, including checks, sending, editing, and deleting. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Ftelegram-bot%22%5D) |
+| [weather-card](./weather-card) | Render an Apple Weather-style forecast card in chat, and query current, hourly, and 10-day WeatherKit data as structured JSON when the forecast drives a decision. | [Import](https://scripting.fun/import_skills?urls=%5B%22https%3A%2F%2Fgithub.com%2FScriptingApp%2Fskills%2Ftree%2Fmain%2Fweather-card%22%5D) |
 
 ## For Skill Developers
 
