@@ -25,5 +25,41 @@
     "options": [],
     "allowCustom": true,
     "customPlaceholder": "写下你的建议"
+  },
+  "multiQuestions": {
+    "question": "确认一下你的偏好",
+    "description": "共 3 题，提交后一起发送。",
+    "submitLabel": "提交全部",
+    "questions": [
+      {
+        "id": "season",
+        "question": "你最喜欢哪个季节？",
+        "mode": "single",
+        "options": [
+          {"id":"spring","label":"春天","description":"花开有时","emoji":"🌸"},
+          {"id":"summer","label":"夏天","description":"阳光热烈","emoji":"☀️"},
+          {"id":"autumn","label":"秋天","description":"落叶温柔","emoji":"🍂"},
+          {"id":"winter","label":"冬天","description":"雪落无声","emoji":"❄️"}
+        ],
+        "allowCustom": true
+      },
+      {
+        "id": "features",
+        "question": "想看哪些功能？",
+        "description": "至少 2 项。",
+        "mode": "multiple",
+        "options": ["图表", "表单", "多问题"],
+        "minSelections": 2,
+        "maxSelections": 3
+      },
+      {
+        "id": "note",
+        "question": "还有什么补充？",
+        "options": [],
+        "allowCustom": true,
+        "required": false,
+        "customPlaceholder": "可留空"
+      }
+    ]
   }
 }
