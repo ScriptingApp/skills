@@ -1,6 +1,6 @@
 import { Button, Text, TextField, VStack, HStack, Spacer, useAgentResponse, useState } from "scripting"
 
-type OptionSpec = string | { id: string; label: string; description?: string; emoji?: string }
+export type OptionSpec = string | { id: string; label: string; description?: string; emoji?: string }
 
 /** 一道题的配置。仅在 questions 数组中使用。 */
 export type AskUserQuestion = {
@@ -36,6 +36,7 @@ type Choice = { id: string; label: string; description: string; emoji: string }
 type Config = {
   key: string
   id: string
+  autoId: boolean
   question: string
   description: string
   items: Choice[]
@@ -59,35 +60,60 @@ const active = { light: "#DEEDDF", dark: "#2A4935" } as const
 const titleColor = { light: "#18251C", dark: "#F0F5F1" } as const
 const subColor = { light: "#58665C", dark: "#AFBDB3" } as const
 
-function normalize(spec: AskUserQuestion, index: number, withIndex: boolean): Config {
-  const items: Choice[] = (spec.options ?? []).map(o => typeof o === "string"
-    ? { id: o, label: o, description: "", emoji: "" }
-    : { id: o.id, label: o.label, description: o.description ?? "", emoji: o.emoji ?? "" })
-  const single = (spec.mode ?? "single") === "single"
+function toInt(value: unknown, fallback: number): number {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN
+  return Number.isFinite(parsed) ? Math.floor(parsed) : fallback
+}
+
+function normalize(raw: AskUserQuestion | null | undefined, index: number, withIndex: boolean): Config {
+  const spec: AskUserQuestion = raw && typeof raw === "object" ? raw : { question: "" }
+  const rawOptions: unknown[] = Array.isArray(spec.options) ? spec.options : []
+  const items: Choice[] = []
+  let badOption = false
+  for (const option of rawOptions) {
+    if (typeof option === "string") { items.push({ id: option, label: option, description: "", emoji: "" }); continue }
+    if (!option || typeof option !== "object") { badOption = true; continue }
+    const record = option as { id?: unknown; label?: unknown; description?: unknown; emoji?: unknown }
+    if (typeof record.id !== "string" || typeof record.label !== "string") { badOption = true; continue }
+    items.push({
+      id: record.id,
+      label: record.label,
+      description: typeof record.description === "string" ? record.description : "",
+      emoji: typeof record.emoji === "string" ? record.emoji : "",
+    })
+  }
+  const question = typeof spec.question === "string" ? spec.question : ""
+  const single = (typeof spec.mode === "string" ? spec.mode.toLowerCase() : "single") !== "multiple"
   const required = spec.required !== false
-  const min = Math.max(0, Math.floor(spec.minSelections ?? (required ? 1 : 0)))
-  const max = single ? 1 : spec.maxSelections === undefined ? Infinity : Math.max(1, Math.floor(spec.maxSelections))
+  const allowCustom = spec.allowCustom === true
+  const min = Math.max(0, toInt(spec.minSelections, required ? 1 : 0))
+  const max = single ? 1 : spec.maxSelections === undefined || spec.maxSelections === null ? Infinity : Math.max(1, toInt(spec.maxSelections, 1))
   const label = withIndex ? `第 ${index + 1} 题：` : ""
   const uniqueIds = new Set(items.map(o => o.id))
-  const configError = !(spec.question ?? "").trim() ? `${label}请提供问题。`
+  const defaults = Array.isArray(spec.defaultSelected) ? spec.defaultSelected : []
+  const capacity = items.length + (allowCustom ? 1 : 0)
+  const configError = badOption ? `${label}选项格式无效。`
+    : !question.trim() ? `${label}请提供问题。`
     : uniqueIds.size !== items.length ? `${label}选项 ID 不能重复。`
     : items.some(o => !o.id.trim() || !o.label.trim()) ? `${label}选项 ID 和标题不能为空。`
     : min > max ? `${label}最少选择数不能大于最多选择数。`
-    : items.length === 0 && !spec.allowCustom ? `${label}请提供选项，或开放自定义答案。`
+    : items.length === 0 && !allowCustom ? `${label}请提供选项，或开放自定义答案。`
+    : min > capacity ? `${label}最少选择数超过可选答案数量。`
     : ""
   return {
     key: `#${index}`,
-    id: (spec.id ?? "").trim() || `q${index + 1}`,
-    question: spec.question ?? "",
-    description: spec.description ?? "",
+    id: typeof spec.id === "string" ? spec.id.trim() || `q${index + 1}` : `q${index + 1}`,
+    autoId: !(typeof spec.id === "string" && spec.id.trim()),
+    question,
+    description: typeof spec.description === "string" ? spec.description : "",
     items,
     single,
-    allowCustom: !!spec.allowCustom,
-    customPlaceholder: spec.customPlaceholder ?? "输入你的答案",
+    allowCustom,
+    customPlaceholder: typeof spec.customPlaceholder === "string" && spec.customPlaceholder.trim() ? spec.customPlaceholder : "输入你的答案",
     min,
     max,
     required,
-    defaultSelected: (spec.defaultSelected ?? []).filter((id, i, arr) => items.some(o => o.id === id) && arr.indexOf(id) === i).slice(0, max),
+    defaultSelected: defaults.filter((id): id is string => typeof id === "string").filter((id, i, arr) => items.some(o => o.id === id) && arr.indexOf(id) === i).slice(0, max),
     configError,
   }
 }
@@ -99,10 +125,22 @@ export default function AskUser({
   maxSelections, submitLabel = "提交答案", questions,
 }: AskUserProps) {
   const multi = Array.isArray(questions) && questions.length > 0
-  const specs: AskUserQuestion[] = multi
-    ? questions!
+  const badQuestions = questions !== undefined && questions !== null && !Array.isArray(questions)
+  const specs: Array<AskUserQuestion | null | undefined> = multi
+    ? (questions as Array<AskUserQuestion | null | undefined>)
     : [{ question: question ?? "", description, options, mode, allowCustom, customPlaceholder, defaultSelected, minSelections, maxSelections }]
   const configs = specs.map((spec, index) => normalize(spec, index, multi))
+  const explicitIds = new Set<string>()
+  for (const config of configs) if (!config.autoId) explicitIds.add(config.id)
+  const takenIds = new Set<string>(explicitIds)
+  let autoSeq = 0
+  for (const config of configs) {
+    if (!config.autoId) continue
+    let candidate = `q${++autoSeq}`
+    while (takenIds.has(candidate)) candidate = `q${++autoSeq}`
+    config.id = candidate
+    takenIds.add(candidate)
+  }
   const duplicateIds = new Set<string>()
   const seen = new Set<string>()
   for (const config of configs) {
@@ -110,7 +148,11 @@ export default function AskUser({
     seen.add(config.id)
   }
   for (const config of configs) {
-    if (duplicateIds.has(config.id)) config.configError = config.configError || "问题 ID 不能重复。"
+    if (duplicateIds.has(config.id)) config.configError = config.configError || `问题 ID「${config.id}」不能重复。`
+  }
+  if (badQuestions) configs[0].configError = configs[0].configError || "questions 必须是数组。"
+  if (!multi && Array.isArray(questions) && questions.length === 0 && !configs[0].question.trim()) {
+    configs[0].configError = "questions 为空数组，请直接提供 question 或至少一道题。"
   }
 
   const { response, responseState } = useAgentResponse()
@@ -170,7 +212,7 @@ export default function AskUser({
     const custom = state.customEnabled ? state.text.trim() : ""
     const count = chosen.length + (custom ? 1 : 0)
     const error = config.configError
-      || (state.customEnabled && !state.text.trim() ? "请填写自定义答案，或取消自定义选项。" : "")
+      || (state.customEnabled && !state.text.trim() && config.min > 0 ? "请填写自定义答案，或取消自定义选项。" : "")
       || (count < config.min ? (config.min === 1 ? "请选择一个答案。" : `请至少提供 ${config.min} 个答案。`) : "")
       || (count > config.max ? `最多选择 ${config.max} 个答案。` : "")
     return { config, live: state, chosen, custom, count, error }
@@ -226,12 +268,13 @@ export default function AskUser({
       const answersById: Record<string, string[]> = {}
       const skipped: string[] = []
       evaluations.forEach((entry, index) => {
-        answersById[entry.config.id] = details[index].answers
+        Object.defineProperty(answersById, entry.config.id, { value: details[index].answers, enumerable: true, configurable: true, writable: true })
         if (entry.count === 0) skipped.push(entry.config.id)
       })
       payload = { multi: true, questions: details, answers: answersById, skipped }
     } else {
-      payload = details[0] as unknown as Record<string, unknown>
+      const detail = details[0] as unknown as Record<string, unknown>
+      payload = { ...detail, id: undefined }
     }
     try {
       await response(JSON.stringify(payload))
@@ -242,7 +285,7 @@ export default function AskUser({
 
   function questionHeader(config: Config, index: number) {
     const kind = config.items.length === 0 && config.allowCustom ? "文本" : config.single ? "单选" : "多选"
-    const tags = `${multi ? `第 ${index + 1} 题 · ` : ""}${kind}${config.allowCustom && config.items.length > 0 ? " · 支持自定义答案" : ""}${config.required ? "" : " · 可跳过"}`
+    const tags = `${multi ? `第 ${index + 1} 题 · ` : ""}${kind}${config.allowCustom && config.items.length > 0 ? " · 支持自定义答案" : ""}${config.min === 0 ? " · 可跳过" : ""}`
     return <VStack alignment="leading" spacing={4}>
       <Text font="caption" foregroundStyle={accent}>{tags}</Text>
       <Text font={multi ? "headline" : "title2"} bold foregroundStyle={titleColor}>{config.question}</Text>
@@ -252,8 +295,8 @@ export default function AskUser({
 
   function optionsView(config: Config, state: LiveState) {
     return <VStack spacing={10}>
-      {config.items.map(item => <Button key={item.id} buttonStyle="plain" disabled={locked}
-        accessibilityLabel={item.label} accessibilityValue={state.selected.includes(item.id) ? "已选中" : "未选中"}
+      {config.items.map((item, itemIndex) => <Button key={`${item.id}-${itemIndex}`} buttonStyle="plain" disabled={locked}
+        accessibilityLabel={item.description ? `${item.label}，${item.description}` : item.label} accessibilityValue={state.selected.includes(item.id) ? "已选中" : "未选中"}
         action={() => toggle(config, item.id)}>
         <HStack spacing={12} padding={14} background={{ style: state.selected.includes(item.id) ? active : multi ? soft : normal, shape: { type: "rect", cornerRadius: 16 } }}>
           {item.emoji ? <Text font="title2">{item.emoji}</Text> : null}
@@ -267,16 +310,19 @@ export default function AskUser({
       </Button>)}
       {config.allowCustom ? <VStack alignment="leading" spacing={10} padding={14}
         background={{ style: state.customEnabled ? active : multi ? soft : normal, shape: { type: "rect", cornerRadius: 16 } }}>
-        <Button buttonStyle="plain" disabled={locked} accessibilityValue={state.customEnabled ? "已选中" : "未选中"} action={() => toggleCustom(config)}>
+        <Button buttonStyle="plain" disabled={locked} accessibilityLabel="其他 / 自定义答案" accessibilityValue={state.customEnabled ? "已选中" : "未选中"} action={() => toggleCustom(config)}>
           <HStack><Text font="headline" foregroundStyle={titleColor}>✍️ 其他 / 自定义答案</Text><Spacer /><Text foregroundStyle={accent}>{state.customEnabled ? "✓" : config.single ? "○" : "□"}</Text></HStack>
         </Button>
-        {state.customEnabled ? <TextField title={config.customPlaceholder} value={state.text} onChanged={text => update(config, { text })} disabled={locked} /> : null}
+        {state.customEnabled ? <VStack alignment="leading" spacing={4}>
+          <TextField title={config.customPlaceholder} value={state.text} onChanged={text => update(config, { text })} disabled={locked} />
+          {config.min === 0 && !state.text.trim() ? <Text font="caption" foregroundStyle={subColor}>留空将跳过此题。</Text> : null}
+        </VStack> : null}
       </VStack> : null}
     </VStack>
   }
 
   function errorView(entry: Evaluation) {
-    const message = errors[entry.config.key]
+    const message = errors[entry.config.key] || entry.config.configError
     return message ? <Text font="caption" foregroundStyle="red">{message}</Text> : null
   }
 
@@ -292,15 +338,19 @@ export default function AskUser({
   }[status]
 
   const headerTags = multi
-    ? `共 ${configs.length} 个问题${configs.some(c => c.allowCustom) ? " · 支持自定义答案" : ""}${configs.some(c => !c.required) ? " · 部分题目可跳过" : ""}`
-    : `${mode === "single" ? "单选" : "多选"}${allowCustom ? " · 支持自定义答案" : ""}`
+    ? `共 ${configs.length} 个问题${configs.some(c => c.allowCustom) ? " · 支持自定义答案" : ""}${configs.some(c => c.min === 0) ? " · 部分题目可跳过" : ""}`
+    : `${configs[0].single ? "单选" : "多选"}${configs[0].allowCustom ? " · 支持自定义答案" : ""}${configs[0].min === 0 ? " · 可跳过" : ""}`
+  const cardTitle = multi ? (typeof question === "string" ? question : "") : configs[0].question
+  const cardDescription = multi ? (typeof description === "string" ? description : "") : configs[0].description
+  const submitText = typeof submitLabel === "string" && submitLabel.trim() ? submitLabel : "提交答案"
+  const blocked = status !== "idle" || !!invalid
 
   return <VStack alignment="leading" spacing={16} padding={20}
     background={{ style: { light: "#F5F7F4", dark: "#18211C" }, shape: { type: "rect", cornerRadius: 24 } }}>
     <VStack alignment="leading" spacing={6}>
       <Text font="caption" foregroundStyle={accent}>{headerTags}</Text>
-      {question ? <Text font="title2" bold foregroundStyle={titleColor}>{question}</Text> : null}
-      {description ? <Text font="subheadline" foregroundStyle={subColor}>{description}</Text> : null}
+      {cardTitle ? <Text font="title2" bold foregroundStyle={titleColor}>{cardTitle}</Text> : null}
+      {cardDescription ? <Text font="subheadline" foregroundStyle={subColor}>{cardDescription}</Text> : null}
     </VStack>
     {multi
       ? <VStack spacing={12}>
@@ -312,13 +362,12 @@ export default function AskUser({
         </VStack>)}
       </VStack>
       : <VStack alignment="leading" spacing={10}>
-        {questionHeader(configs[0], 0)}
         {optionsView(configs[0], liveOf(configs[0]))}
         {errorView(evaluations[0])}
       </VStack>}
-    <Button buttonStyle="plain" disabled={status !== "idle" || !!invalid} action={submit}>
-      <HStack padding={16} background={{ style: invalid ? { light: "#6F7D73", dark: "#455B4C" } : "#38704F", shape: { type: "rect", cornerRadius: 16 } }}>
-        <Spacer /><Text font="headline" foregroundStyle="white">{status === "sent" ? "已提交 ✓" : status === "pending" || status === "sending" ? "正在发送…" : submitLabel}</Text><Spacer />
+    <Button buttonStyle="plain" disabled={blocked} action={submit}>
+      <HStack padding={16} background={{ style: blocked ? { light: "#6F7D73", dark: "#455B4C" } : "#38704F", shape: { type: "rect", cornerRadius: 16 } }}>
+        <Spacer /><Text font="headline" foregroundStyle="white">{status === "sent" ? "已提交 ✓" : status === "pending" ? "已排队…" : status === "sending" ? "正在发送…" : submitText}</Text><Spacer />
       </HStack>
     </Button>
     <Text font="caption" foregroundStyle={subColor}>{statusText}</Text>

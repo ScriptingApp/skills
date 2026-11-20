@@ -54,16 +54,18 @@ Option 对象：`{ "id": "unique-id", "label": "标题", "description": "可选�
 | defaultSelected | string[] | [] |
 | minSelections | number | 必答题默认 1，可跳过题默认 0 |
 | maxSelections | number | 多选默认不限，单选固定 1 |
-| required | boolean | true；false 表示该题允许留空（计入 `skipped`） |
+| required | boolean | true；false 表示该题默认允许留空（等价于 minSelections 0，计入 `skipped`）；若同时显式给 minSelections > 0 则仍需满足 |
 
-`question` / `description` 在多问题模式下是全卡标题与副标题，不是某一题的内容。
+`question` / `description` 在多问题模式下是全卡标题与副标题，不是某一题的内容。`questions: []` 或 `questions: null` 视为未提供，回落到单问题参数；`questions` 是其他类型会作为配置错误提示。`mode` 大小写不敏感（`Single` / `MULTIPLE` 均可）。
 
 ## 行为
 - 单选：预设选项与自定义答案互斥。
 - 多选：预设选项可以与自定义答案同时提交；自定义答案计为一项。
-- 勾选自定义后必须填写非空文本，或取消该选项；仅保留去除首尾空白后的文字。
+- 勾选自定义后，必答题必须填写非空文本；可跳过题（`minSelections` 为 0）可以留空，留空即计为跳过。仅保留去除首尾空白后的文字。
 - 纯输入：`options: []` + `allowCustom: true`，用户点“其他 / 自定义答案”后填写。
 - 多问题：每题独立校验、独立显示错误；任意一题不合格则整张卡片不能提交。可跳过题未作答时允许提交，并在回传的 `skipped` 中列出其 id。
+- 题目身份只看 `id`：两题标题完全相同、或两题选项文案完全相同都不会出错，回传按 id 区分。但同一题内两个选项用相同标题时，`answers` / `selectedLabels` 会变得歧义，此时以 `selectedIds` 为准；需要时在调用前就把标题写清楚。
+- 题目 `id` 重复、选项 `id` 重复、选项/问题标题为空、`questions` 不是数组、选项格式无效、`options` 为空且未开放自定义、最少选择数超过可选答案数量，都属于配置错误：卡片会禁用提交，并把提示显示在对应题目下（单问题显示在选项下方），不会静默失败；`questions` 里的 `null` / 非对象条目会降级为一道空题并报到该题下，不会整卡崩溃。
 - 进度文字按题给出（如“已完成 2/3 题”），仍在每一题下显示该题的具体错误，不只用颜色表达。
 - 未达到最少数量、超过最多数量、配置错误时禁止提交；错误和进度提供文字说明。
 - 仅状态 idle 可提交。pending/sending/sent/failed 锁定卡片；编辑或取消聊天队列中的答案后由宿主恢复 idle，此时可再次修改再提交。
@@ -176,6 +178,7 @@ Option 对象：`{ "id": "unique-id", "label": "标题", "description": "可选�
 - response 最多 64 KiB UTF-8，超限将显示宿主错误。不要收集密码、令牌等敏感内容。
 - 一张卡片建议不超过 6 题、每题选项不超过 6 个，否则卡片过高、需要长距滚动；问题更多时拆成多轮，先问最关键的一两个。
 - 每题 `id` 在整张卡片内唯一；缺省按顺序生成 q1、q2…
+- 同一题内尽量别用两个相同标题的选项；标题用于生成 `selectedLabels` / `answers`，重复后人读起来也会含糊。题目之间标题重复无妨，解析时按 id 对应。
 - 文件只传路径文本，不会自动上传或附加。
 - 组件必须 default-export View；禁止 Navigation.present 和 Script.exit。
 - 技能目录位置可随安装环境改变；始终使用当前技能目录下 ask_user.tsx 的真实绝对路径。
